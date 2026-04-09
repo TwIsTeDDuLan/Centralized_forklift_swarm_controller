@@ -1,0 +1,2 @@
+
+    ros2 topic pub --qos-reliability best_effort /forklift_1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 1.0}, angular: {x: 0.0, y: 0.0, z: 0.0}}"
