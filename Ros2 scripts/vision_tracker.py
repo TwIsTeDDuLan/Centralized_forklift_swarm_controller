@@ -9,13 +9,17 @@ if os.path.isdir(ros_python_path) and ros_python_path not in sys.path:
     sys.path.append(ros_python_path)
 
 import rclpy
-from rclpy.node import Node
-from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
 import cv2
 import cv2.aruco as aruco
 import numpy as np
 import math
+
+
+from rclpy.node import Node
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
+from geometry_msgs.msg import Pose2D
+
 
 class SwarmTracker(Node):
     def __init__(self):
@@ -27,7 +31,18 @@ class SwarmTracker(Node):
             '/warehouse/overhead_cam/image_raw',
             self.image_callback,
             10)
-            
+        
+        # Publisher for vision data (Pose2D messages)
+        # For Forklifts
+        self.pub_fl1_vision = self.create_publisher(Pose2D, '/forklift_1/vision_data', 10)
+        self.pub_fl2_vision = self.create_publisher(Pose2D, '/forklift_2/vision_data', 10)
+        self.pub_fl3_vision = self.create_publisher(Pose2D, '/forklift_3/vision_data', 10)
+
+        # For Pallets
+        self.pub_plt1_vision = self.create_publisher(Pose2D, 'pallet_1/vision_data', 10)
+        self.pub_plt2_vision = self.create_publisher(Pose2D, 'pallet_2/vision_data', 10)
+        self.pub_plt3_vision = self.create_publisher(Pose2D, 'pallet_3/vision_data', 10)
+
         self.bridge = CvBridge()
         self.disable_aruco = os.getenv('SWARM_DISABLE_ARUCO', '0').lower() in ('1', 'true', 'yes', 'on')
         
@@ -119,18 +134,57 @@ class SwarmTracker(Node):
                     heading_rad = math.atan2(dy, dx)
                     heading_deg = math.degrees(heading_rad)
                     
-                    # Print the full Pose to the terminal
-                    print(f"Forklift [{tag_id}] -> X: {center_x}, Y: {center_y}, Heading: {heading_deg:.1f}°")
-                    
+                    if tag_id <= 3:
+                        # publish the vision data for this forklift
+                        self.forklift_vission_data_publisher(tag_id, center_x, center_y, heading_rad)
+
+                        # Print the full Pose to the terminal
+                        print(f"Forklift [{tag_id}] -> X: {center_x}, Y: {center_y}, Heading: {heading_deg:.1f}°")
+        
+                    elif tag_id > 3:
+                        # publish the vision data for this Pallet
+                        self.pallet_vission_data_publisher(tag_id, center_x, center_y, heading_rad)
+
+                        # Print the full Pose to the terminal
+                        print(f"Pallet [{tag_id}] -> X: {center_x}, Y: {center_y}, Heading: {heading_deg:.1f}°")
+
                     # Draw a red dot in the center
                     cv2.circle(draw_image, (center_x, center_y), 5, (0, 0, 255), -1)
-                    
+                                    
                     # Draw a bright green line pointing to the front (The "Heading Vector")
                     cv2.line(draw_image, (center_x, center_y), (front_x, front_y), (0, 255, 0), 3)
+
 
         # Show the live tracking window
         cv2.imshow("Swarm God-Camera", draw_image)
         cv2.waitKey(1)
+
+    def forklift_vission_data_publisher(self, tag_id, x, y, heading):
+        if tag_id == 1:
+            msg = Pose2D(x=float(x), y=float(y), theta=float(heading))
+            self.pub_fl1_vision.publish(msg)
+        elif tag_id == 2:
+            msg = Pose2D(x=float(x), y=float(y), theta=float(heading))
+            self.pub_fl2_vision.publish(msg)
+        elif tag_id == 3:
+            msg = Pose2D(x=float(x), y=float(y), theta=float(heading))
+            self.pub_fl3_vision.publish(msg)
+        else:
+            self.get_logger().warn(f"Unknown tag ID: {tag_id}. Cannot publish vision data.")    
+
+    def pallet_vission_data_publisher(self, tag_id, x, y, heading):
+        if tag_id == 4:
+            msg = Pose2D(x=float(x), y=float(y), theta=float(heading))
+            self.pub_plt1_vision.publish(msg)
+        elif tag_id == 5:
+            msg = Pose2D(x=float(x), y=float(y), theta=float(heading))
+            self.pub_plt3_vision.publish(msg)
+        elif tag_id == 6:
+            msg = Pose2D(x=float(x), y=float(y), theta=float(heading))
+            self.pub_plt3_vision.publish(msg)
+        else:
+            self.get_logger().warn(f"Unknown tag ID: {tag_id}. Cannot publish vision data.")    
+
 
 def main(args=None):
     rclpy.init(args=args)

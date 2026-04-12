@@ -1,7 +1,7 @@
 import cv2
 
 # 1. Load your existing ArUco tag image
-image = cv2.imread('forklift_3.png')
+image = cv2.imread('pallet_33.png')
 
 # 2. Define the border thickness (in pixels)
 # A good rule of thumb is at least 10-20% of the image size. 
@@ -20,5 +20,5 @@ bordered_image = cv2.copyMakeBorder(
 )
 
 # 4. Save the new image
-cv2.imwrite('forklift_33.png', bordered_image)
+cv2.imwrite('pallet_3.png', bordered_image)
 print("Tag with Quiet Zone saved successfully!")
