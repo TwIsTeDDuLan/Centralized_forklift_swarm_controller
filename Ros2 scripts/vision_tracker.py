@@ -25,14 +25,14 @@ class SwarmTracker(Node):
     def __init__(self):
         super().__init__('swarm_vision_tracker')
         
-        # 1. Subscribe to the Isaac Sim camera feed
+        # ------Subscribers------
         self.subscription = self.create_subscription(
             Image,
             '/warehouse/overhead_cam/image_raw',
             self.image_callback,
             10)
         
-        # Publisher for vision data (Pose2D messages)
+        # ------Publishers------
         # For Forklifts
         self.pub_fl1_vision = self.create_publisher(Pose2D, '/forklift_1/vision_data', 10)
         self.pub_fl2_vision = self.create_publisher(Pose2D, '/forklift_2/vision_data', 10)
@@ -42,6 +42,8 @@ class SwarmTracker(Node):
         self.pub_plt1_vision = self.create_publisher(Pose2D, 'pallet_1/vision_data', 10)
         self.pub_plt2_vision = self.create_publisher(Pose2D, 'pallet_2/vision_data', 10)
         self.pub_plt3_vision = self.create_publisher(Pose2D, 'pallet_3/vision_data', 10)
+
+        # ----------------------
 
         self.bridge = CvBridge()
         self.disable_aruco = os.getenv('SWARM_DISABLE_ARUCO', '0').lower() in ('1', 'true', 'yes', 'on')

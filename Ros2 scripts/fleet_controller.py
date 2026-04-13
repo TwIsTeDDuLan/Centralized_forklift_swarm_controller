@@ -22,12 +22,72 @@ class FleetController(Node):
         super().__init__('fleet_controller')
 
         # ------Subscribers------
+
+        # Fork Lifts
         self.forklift_subscription = self.create_subscription(
             Pose2D,
             '/forklift_1/vision_data',
-            self.forklift_1_vision_callback,
+            self.forklift_callback,
             10
-        ) 
+        )
+
+        self.forklift_subscription = self.create_subscription(
+            Pose2D,
+            '/forklift_2/vision_data',
+            self.forklift_callback,
+            10
+        )
+
+        self.forklift_subscription = self.create_subscription(
+            Pose2D,
+            '/forklift_3/vision_data',
+            self.forklift_callback,
+            10
+        )
+
+        # Pallets
+        self.forklift_subscription = self.create_subscription(
+            Pose2D,
+            '/pallet_1/vision_data',
+            self.pallet_callback,
+            10
+        )
+
+        self.forklift_subscription = self.create_subscription(
+            Pose2D,
+            '/pallet_2/vision_data',
+            self.pallet_callback,
+            10
+        )
+
+        self.forklift_subscription = self.create_subscription(
+            Pose2D,
+            '/pallet_3/vision_data',
+            self.pallet_callback,
+            10
+        )
+
+        # ----------------------
+
+        # ------Publishers------
+
+        self.forklift_1_target_pub = self.create_publisher(Pose2D, '/forklift_1/target_pos', 10)
+        self.forklift_2_target_pub = self.create_publisher(Pose2D, '/forklift_2/target_pos', 10)
+        self.forklift_3_target_pub = self.create_publisher(Pose2D, '/forklift_3/target_pos', 10)
+
+        # ----------------------
+
+    def forklift_callback(self, msg):
+        pass
+
+
+    def pallet_callback(self, msg: Pose2D):
+        target = Pose2D()
+        target.x = msg.x
+        target.y = msg.y
+        target.theta = msg.theta
+        self.forklift_1_target_pub.publish(target)
+        # self.get_logger().info(f"sent, {target}")
 
 def main(args=None):
     rclpy.init(args=args)
