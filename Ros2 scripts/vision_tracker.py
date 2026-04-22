@@ -135,20 +135,21 @@ class SwarmTracker(Node):
                     dy = center_y - front_y 
                     heading_rad = math.atan2(dy, dx)
                     heading_deg = math.degrees(heading_rad)
+                    print(f"Heading (rad): {heading_rad:.2f}, Heading (deg): {heading_deg:.1f}")
                     
                     if tag_id <= 3:
                         # publish the vision data for this forklift
                         self.forklift_vission_data_publisher(tag_id, center_x, center_y, heading_rad)
 
                         # Print the full Pose to the terminal
-                        print(f"Forklift [{tag_id}] -> X: {center_x}, Y: {center_y}, Heading: {heading_deg:.1f}°")
+                        # print(f"Forklift [{tag_id}] -> X: {center_x}, Y: {center_y}, Heading: {heading_deg:.1f}°")
         
                     elif tag_id > 3:
                         # publish the vision data for this Pallet
                         self.pallet_vission_data_publisher(tag_id, center_x, center_y, heading_rad)
 
                         # Print the full Pose to the terminal
-                        print(f"Pallet [{tag_id}] -> X: {center_x}, Y: {center_y}, Heading: {heading_deg:.1f}°")
+                        # print(f"Pallet [{tag_id}] -> X: {center_x}, Y: {center_y}, Heading: {heading_deg:.1f}°")
 
                     # Draw a red dot in the center
                     cv2.circle(draw_image, (center_x, center_y), 5, (0, 0, 255), -1)

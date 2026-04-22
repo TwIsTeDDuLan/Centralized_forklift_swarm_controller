@@ -1,0 +1,5 @@
+ros2 topic pub --once /forklift_1/mast_target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z:1.50}, angular: {x: 0.0, y: 0.0, z: 2.0}}" 
+
+ros2 topic pub /forklift_1/target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z:1.50}, angular: {x: 0.0, y: 0.0, z: 2.0}}" 
+
+ros2 topic pub --once /forklift_1/lift_target_pos geometry_msgs/msg/Pose2D "{x: 1087.0, y: 360.0, theta: 30.0}"

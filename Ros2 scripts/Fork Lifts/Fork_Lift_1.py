@@ -23,17 +23,37 @@ class ForkLift_1(Node):
         # ------Parameters (The "State") ------
         self.mast_height = 0.0
         self.target_mast_height = 0.0  # NEW: Store the requested goal
-        self.prev_time_lift = 0
-        self.integaral_sum_lift = 0
-        self.prev_error_lift = 0
+        self.prev_time = 0
+        self.integaral_sum = 0
+        self.prev_error = 0
+        self.target_pos = Pose2D()
+        self.cur_pos = Pose2D()
+        self.target_pos_recived = False
+
+        # ------Camera Deadzone Configuration------
+        self.CAMERA_WIDTH = 1280
+        self.CAMERA_HEIGHT = 720
+        self.DEADZONE_MARGIN = 50
+        self.DEADZONE_MIN_X = self.DEADZONE_MARGIN
+        self.DEADZONE_MAX_X = self.CAMERA_WIDTH - self.DEADZONE_MARGIN
+        self.DEADZONE_MIN_Y = self.DEADZONE_MARGIN
+        self.DEADZONE_MAX_Y = self.CAMERA_HEIGHT - self.DEADZONE_MARGIN
+        # ----------------------------------------
 
         # -------------------------------------
 
         # ------Subscribers------
+        self.forklift_subscription = self.create_subscription(
+            Pose2D,
+            '/forklift_1/vision_data',
+            self.lift_cur_pos_callback,
+            10
+        )
+
         self.sub_target_pos = self.create_subscription(
             Pose2D,
-            '/forklift_1/target_pos',
-            self.target_pos_callback,
+            '/forklift_1/lift_target_pos',
+            self.lift_target_pos_callback,
             10
         )
 
@@ -62,12 +82,18 @@ class ForkLift_1(Node):
         # ------Timers------
         # NEW: Create a control loop that runs at 20Hz (every 0.05 seconds)
         self.control_timer = self.create_timer(0.05, self.control_loop)
+        self.drive_control_timer = self.create_timer(0.1, self.drive_control_loop)
         # ------------------
 
         self.get_logger().info("Forklift 1 is online. Ready to receive vision data and command the lift and drive.")
 
-    def target_pos_callback(self, msg: Pose2D):
-        pass
+    def lift_cur_pos_callback(self, msg: Pose2D):
+        self.cur_pos = msg
+
+    def lift_target_pos_callback(self, msg: Pose2D):
+        self.target_pos = msg
+        self.target_pos_recived = True
+        self.get_logger().info(f"New Position target received: {self.target_pos}")
 
     def target_mast_callback(self, msg: Twist):
         # 1. Update the state ONLY. Do not execute movement here.
@@ -78,7 +104,12 @@ class ForkLift_1(Node):
         if msg.position:
             self.mast_height = msg.position[0]
 
-    
+    def is_in_deadzone(self, pose: Pose2D) -> bool:
+        """Check if the pose is outside the safe camera region (within deadzone margin)."""
+        return (pose.x < self.DEADZONE_MIN_X or 
+                pose.x > self.DEADZONE_MAX_X or 
+                pose.y < self.DEADZONE_MIN_Y or 
+                pose.y > self.DEADZONE_MAX_Y)
     
     def control_loop(self):
         # 2. This runs continuously, calculating the PID based on the current state
@@ -93,10 +124,40 @@ class ForkLift_1(Node):
             lift_cmd = Twist()
             lift_cmd.linear.z = control_signal
             self.pub_lift.publish(lift_cmd)
-            self.get_logger().info(f"\nPublished lift command: {lift_cmd.linear.z} \nmast_cur_height:{self.mast_height} \ntarge_height:{self.target_mast_height}")
+            # self.get_logger().info(f"\nPublished lift command: {lift_cmd.linear.z} \nmast_cur_height:{self.mast_height} \ntarge_height:{self.target_mast_height}")
+
+    def drive_control_loop(self):
+        if not self.target_pos_recived:
+            return
+
+        if self.target_pos == self.cur_pos:
+            self.target_pos_recived = False
+
+        # Check if forklift is in deadzone
+        if self.is_in_deadzone(self.cur_pos):
+            # self.get_logger().warn(
+            #     f"DEADZONE VIOLATION: Forklift at ({self.cur_pos.x:.1f}, {self.cur_pos.y:.1f}) "
+            #     f"is outside safe region [x: {self.DEADZONE_MIN_X}-{self.DEADZONE_MAX_X}, "
+            #     f"y: {self.DEADZONE_MIN_Y}-{self.DEADZONE_MAX_Y}]. Stopping."
+            # )
+            drive_cmd = AckermannDriveStamped()
+            drive_cmd.drive.speed = 0.0
+            drive_cmd.drive.steering_angle = 0.0
+            self.pub_drive.publish(drive_cmd)
+            return
+
+        control_signal = self.PID_controller_drive(self.target_pos, self.cur_pos)
+        drive_cmd = AckermannDriveStamped()
+        drive_cmd.drive.speed = control_signal[0]
+        drive_cmd.drive.steering_angle = control_signal[1]
+        self.pub_drive.publish(drive_cmd)
 
     def PID_controller_drive(self, target_pose, current_pose):
-        Kp = 0.3
+        cur_time = self.get_clock().now().nanoseconds / 1e9  # Convert to seconds
+        dt = cur_time - self.prev_time
+
+
+        Kp = 1.5
         Ki = 0.0
         Kd = 0.0
 
@@ -105,8 +166,10 @@ class ForkLift_1(Node):
         error_theta = target_pose.theta - current_pose.theta
 
         control_signal_speed = Kp * math.sqrt(error_x**2 + error_y**2)
-        control_signal_steering = Kp * error_theta
-
+        control_signal_steering = Kp * error_theta * 0.5  # Reduce steering sensitivity
+        print(f"Target Pose: x={target_pose.x}, y={target_pose.y}, theta={target_pose.theta}")
+        print(f"Current Pose: x={current_pose.x}, y={current_pose.y}, theta={current_pose.theta}")
+        print(f"Control Signal Speed: {control_signal_speed}, Steering: {control_signal_steering}")
         return control_signal_speed, control_signal_steering
 
 def main(args=None):
@@ -115,6 +178,7 @@ def main(args=None):
     rclpy.spin(fleet_controller)
     fleet_controller.destroy_node()
     rclpy.shutdown()
+    
     
 if __name__ == '__main__':
     main()
