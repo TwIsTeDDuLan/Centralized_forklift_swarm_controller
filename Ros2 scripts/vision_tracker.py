@@ -25,6 +25,11 @@ class SwarmTracker(Node):
     def __init__(self):
         super().__init__('swarm_vision_tracker')
         
+        # ------Heading Smoothing (Low-pass filter)------
+        self.heading_filter_alpha = 0.3  # 0.0 = full smoothing, 1.0 = no smoothing
+        self.last_heading = {}  # Store per-tag heading for smoothing
+        # -----------------------------------------------
+        
         # ------Subscribers------
         self.subscription = self.create_subscription(
             Image,
@@ -121,19 +126,31 @@ class SwarmTracker(Node):
                     c2 = tag_corners[2] # Bottom-Right
                     c3 = tag_corners[3] # Bottom-Left
                     
-                    # 2. Calculate the exact center point (X, Y)
-                    center_x = int((c0[0] + c2[0]) / 2)
-                    center_y = int((c0[1] + c2[1]) / 2)
+                    # 2. Calculate the exact center point (X, Y) using FLOATS for heading precision
+                    center_x_float = (c0[0] + c2[0]) / 2
+                    center_y_float = (c0[1] + c2[1]) / 2
+                    center_x = int(center_x_float)
+                    center_y = int(center_y_float)
                     
-                    # 3. Calculate the midpoint of the "Front" edge (between c0 and c1)
-                    front_x = int((c0[0] + c1[0]) / 2)
-                    front_y = int((c0[1] + c1[1]) / 2)
+                    # 3. Calculate the midpoint of the "Front" edge (between c0 and c1) using FLOATS
+                    front_x_float = (c0[0] + c1[0]) / 2
+                    front_y_float = (c0[1] + c1[1]) / 2
+                    front_x = int(front_x_float)
+                    front_y = int(front_y_float)
                     
-                    # 4. Calculate the Heading Angle using atan2
+                    # 4. Calculate the Heading Angle using atan2 with FLOAT coordinates (not quantized)
                     # Note: We invert the Y-axis because OpenCV Y goes DOWN, but ROS math expects Y to go UP
-                    dx = front_x - center_x
-                    dy = center_y - front_y 
+                    dx = front_x_float - center_x_float
+                    dy = center_y_float - front_y_float 
                     heading_rad = math.atan2(dy, dx)
+                    
+                    # 5. Apply low-pass filter to smooth heading and reduce 180° lock-in
+                    if tag_id not in self.last_heading:
+                        self.last_heading[tag_id] = heading_rad
+                    heading_rad = (self.heading_filter_alpha * heading_rad + 
+                                   (1 - self.heading_filter_alpha) * self.last_heading[tag_id])
+                    self.last_heading[tag_id] = heading_rad
+                    
                     heading_deg = math.degrees(heading_rad)
                     print(f"Heading (rad): {heading_rad:.2f}, Heading (deg): {heading_deg:.1f}")
                     
