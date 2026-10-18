@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forklift_lab"
+version = "0.1.0"
+description = "Isaac Lab RL tasks for the Ackermann (rear-steered) forklift_b."
+requires-python = ">=3.12,<3.13"
+
+# Isaac Lab's unified train/play scripts discover tasks through this entry point,
+# so no copies of train.py / play.py are needed here.
+[project.entry-points."isaaclab.tasks"]
+forklift_lab = "forklift_lab.tasks"
+
+[tool.setuptools.packages.find]
+include = ["forklift_lab*"]

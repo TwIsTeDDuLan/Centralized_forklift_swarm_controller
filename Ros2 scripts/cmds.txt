@@ -1,5 +1,12 @@
-ros2 topic pub --once /forklift_1/mast_target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z:1.50}, angular: {x: 0.0, y: 0.0, z: 2.0}}" 
+ros2 topic pub --once /forklift_1/mast_target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 1.50}, angular: {x: 0.0, y: 0.0, z: 2.0}}" 
 
-ros2 topic pub /forklift_1/target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z:1.50}, angular: {x: 0.0, y: 0.0, z: 2.0}}" 
+ros2 topic pub --once /forklift_1/mast_target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 2.0}, angular: {x: 0.0, y: 0.0, z: 2.0}}" && ros2 topic pub --once /forklift_2/mast_target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 1.50}, angular: {x: 0.0, y: 0.0, z: 2.0}}" && ros2 topic pub --once /forklift_3/mast_target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 2.0}, angular: {x: 0.0, y: 0.0, z: 2.0}}" 
+ 
 
-ros2 topic pub --once /forklift_1/lift_target_pos geometry_msgs/msg/Pose2D "{x: 1087.0, y: 360.0, theta: 30.0}"
+
+ros2 topic pub /forklift_1/target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 1.50}, angular: {x: 0.0, y: 0.0, z: 2.0}}" 
+
+ros2 topic pub --once /forklift_1/lift_target_pos geometry_msgs/msg/Pose2D "{x: 1087.0, y: 360.0, theta: 30.0}" && ros2 topic pub --once /forklift_2/lift_target_pos geometry_msgs/msg/Pose2D "{x: 350.0, y: 185.0, theta: 30.0}" && ros2 topic pub --once /forklift_3/lift_target_pos geometry_msgs/msg/Pose2D "{x: 270.0, y: 630.0, theta: 30.0}"
+
+
+ros2 topic pub /forklift_1/ackermann ackermann_msgs/msg/AckermannDriveStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: ''}, drive: {steering_angle: 60.0, steering_angle_velocity: 0.0, speed: 60.0, acceleration: 0.0, jerk: 0.0}}" -r 10

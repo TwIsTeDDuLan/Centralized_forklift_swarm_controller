@@ -147,12 +147,15 @@ class SwarmTracker(Node):
                     # 5. Apply low-pass filter to smooth heading and reduce 180° lock-in
                     if tag_id not in self.last_heading:
                         self.last_heading[tag_id] = heading_rad
-                    heading_rad = (self.heading_filter_alpha * heading_rad + 
-                                   (1 - self.heading_filter_alpha) * self.last_heading[tag_id])
+                    # Filter on the wrapped difference so headings near +-180° don't average to 0°.
+                    prev = self.last_heading[tag_id]
+                    delta = math.atan2(math.sin(heading_rad - prev), math.cos(heading_rad - prev))
+                    heading_rad = prev + self.heading_filter_alpha * delta
+                    heading_rad = math.atan2(math.sin(heading_rad), math.cos(heading_rad))
                     self.last_heading[tag_id] = heading_rad
                     
                     heading_deg = math.degrees(heading_rad)
-                    print(f"Heading (rad): {heading_rad:.2f}, Heading (deg): {heading_deg:.1f}")
+                    print(f"fork_lift_{tag_id} Heading (deg): {heading_deg:.1f}")
                     
                     if tag_id <= 3:
                         # publish the vision data for this forklift
@@ -198,7 +201,7 @@ class SwarmTracker(Node):
             self.pub_plt1_vision.publish(msg)
         elif tag_id == 5:
             msg = Pose2D(x=float(x), y=float(y), theta=float(heading))
-            self.pub_plt3_vision.publish(msg)
+            self.pub_plt2_vision.publish(msg)
         elif tag_id == 6:
             msg = Pose2D(x=float(x), y=float(y), theta=float(heading))
             self.pub_plt3_vision.publish(msg)

@@ -1,0 +1,5 @@
+# training output (checkpoints, TensorBoard, console logs): keep on disk, out of git
+logs/
+outputs/
+*.egg-info/
+__pycache__/
