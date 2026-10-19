@@ -19,13 +19,16 @@ Ros2 scripts/            ROS 2 nodes (system Python 3.12, numpy only; no torch)
   rl_forklift_controller.py  two-policy RL node: nav to staging, then insert (same topics + /scan)
   rl_policy.py             numpy MLP + nav/insert observation builders (no ROS imports)
   policies/forklift_nav.npz, forklift_insert.npz
-  attach_fork_lidar.py     runtime 3x64 fork lidar -> /forklift_N/scan (does not edit USDs)
+  attach_fork_lidar.py     3x64 fork lidar -> /forklift_N/scan; run in Isaac Sim's Script Editor (no USD edits)
+  tests/fake_world.py      kinematic forklift 1 + pallet 1 + camera + mast + lidar (no Isaac Sim)
+  run_fake_pick_test.sh    fleet pick -> deliver -> place against fake_world + the real RL node
   fleet_controller.py, run_*.sh, cmds.txt (example topic commands)
 isaac_lab_forklift/      Isaac Lab package `forklift_lab`; see its README.md
   forklift_lab/robot.py    articulation cfg, fork-tip / lidar mount constants
   forklift_lab/pallet.py   EUR pocket geometry + o3dyn visual spawn
   forklift_lab/tasks/      Isaac-Forklift-Nav-Direct, Isaac-Forklift-Insert-Direct
-  scripts/                 train.sh, play.sh, export_policy.py, eval_deploy.py, eval_insert.py
+  scripts/                 train.sh, play.sh, export_policy.py, eval_deploy.py, eval_insert.py,
+                           check_fork_lidar.py (headless warehouse lidar check, run with ~/issacsim/python.sh)
   logs/                    training runs (git-ignored)
 ```
 
@@ -151,32 +154,52 @@ approach, not a collision. Do not claim warehouse insertion works until it is ru
 
 ## ROS deployment
 
+Start Isaac Sim from a shell with `source /opt/ros/jazzy/setup.bash` (its ROS 2 bridge and the lidar need it).
+
 ```bash
-cd "Ros2 scripts" && ./run_rl_forklift.sh 1 2 3        # or: python3 rl_forklift_controller.py 1 --ros-args -p ...
-ros2 topic pub --once /forklift_1/lift_target_pos geometry_msgs/msg/Pose2D "{x: 900.0, y: 360.0, theta: 30.0}"
-ros2 topic echo /forklift_1/goal_status                # "reached: staging" / "reached: inserted" / "failed: ..."
+cd "Ros2 scripts"
+./run_tracker.sh                     # vision
+./run_rl_forklift.sh 1 2 3           # RL nodes
+# Isaac Sim Script Editor: open + Run attach_fork_lidar.py   (./run_fork_lidar.sh prints the steps)
+./run_fleet_controller.sh            # fleet> pallet 1 2 0.3 | 2 900 500 90 | place 2 | 1 640 360 - | stop all
+ros2 topic echo /forklift_1/goal_status
+./run_fake_pick_test.sh [x y yaw]    # whole pick cycle without Isaac Sim (ROS_DOMAIN_ID 81)
 ```
 
-* **Parameters:** `policy_path`, `insert_policy_path`, `auto_insert` (true), `px_per_m` (65),
-  `settle_ticks` (3), `rl_position_tolerance_px` (0.5 m → ~33 px for staging),
-  `rl_heading_tolerance_deg` (30), `tag_heading_offset_deg` (0), `auto_heading_check` (true),
-  `insert_progress_m` (2.0), `insert_timeout_sec` (20). `goal_timeout_sec` etc. are inherited.
-* **State machine:** `lift_target_pos` is the *tag* staging pose (tips 1.5 m from the pallet face,
-  so the tag goal is ~4.0 m back). Nav policy drives there; if `auto_insert` the insert policy
-  then commands `ackermann` and `/lift` (mast PID is disabled). Needs `/forklift_N/scan` (192 ranges).
-* **Fleet `pallet` command:** computes that staging pose from `/pallet_N/vision_data` and the
-  forklift pose (forks pointed at the pallet). Pallet topics are absolute `/pallet_N/vision_data`.
-* **Warehouse lidar:** `attach_fork_lidar.py` after the scene is open (do not edit Environment.usd).
-* **`auto_heading_check`:** while driving nearly straight, the node compares the tag's actual motion
-  with its believed heading. After two agreeing measurements it corrects the offset in 90° steps and logs
-  the value to make permanent.
-* **Inherited from `ForkliftController`:** mast control (`mast_target_pos`), `/stop`, the safe-area check,
-  vision timeout and startup zero commands.
-* **Testing without Isaac Sim:** a kinematic stand-in works well. Subscribe to `/forklift_1/ackermann`,
-  integrate the rear-steer bicycle model (u = v·cos δ, ω = −v·sin δ / 1.39, v = speed·π/180·0.16, tag
-  1.19 m ahead of the roller axle), and publish `vision_data` at 30 Hz as int pixels with `theta` = yaw + 180°
-  through the 0.3 low-pass. Such a test reached all goals, including recovery from a wrong 180° offset.
-  The script is not in the repo yet.
+* **Node states** (`rl_forklift_controller.py`): `nav_staging` → `insert` → idle and carrying →
+  (`lift_target_pos` = delivery, no insert) → `/forklift_N/place` → `place` (lower, back out) → idle.
+  * Statuses: `reached: staging`, `reached: inserted (...)`, `reached: delivered (...)`,
+    `reached: placed (...)`, `failed: ...`, `rejected: ...`.
+  * A nav goal counts as reached only after `settle_ticks` with the tag nearly still (`settle_motion_px` 4,
+    `settle_turn_deg` 3). Without this, staging fired mid-turn, 30° off.
+  * Staging tolerance = nav training (0.2 m × 1.25 ≈ 16 px, 15°). 0.5 m / 30° put the insert outside its
+    training band and it went in crooked.
+  * Insert travel = tip-to-face distance (nearest level-channel hit × cos(azimuth), when the insert starts)
+    + `insert_depth_m` 0.65. No face in the scan → `failed`, never inserts blind.
+  * On `inserted` the node holds the lift (clears the mast target); `mast_target_pos` then lifts.
+    `place` lowers to the insert height − `place_lower_m` (0.05) and backs out `place_backout_m` (2.5 m)
+    counterweight-first.
+* **Fleet** `pallet P F [lift]`:
+  * The pallet tag's top edge is the normal of a 1200 mm face (measured). The forks enter along ±theta,
+    whichever face looks toward the forklift (`rl_policy.pallet_entry_heading`).
+  * The staging tag pose puts the tips 1.5 m from that face (`staging_tag_pixels`, face 0.4 m from the
+    pallet tag).
+  * The lift (default 0.3 m) is sent only after `reached: inserted`.
+  * `FORK_HEADING_OFFSET_DEG` = 0.
+* **`attach_fork_lidar.py`:**
+  * Hooks PhysX step events (never a blocking loop: that froze Isaac Sim) and reads the lift pose from
+    PhysX (USD xforms are stale under Fabric).
+  * Uses its own rclpy context. Running it again replaces the old instance.
+  * Skips hits on the floor, on the own forklift and on `collision_boxes` (the pallet load box), because
+    the training lidar only models the deck.
+  * `check_fork_lidar.py` result: warehouse scan at staging = training model within 1 mm, at 10 Hz.
+* **Parameters:** `policy_path`, `insert_policy_path`, `auto_insert`, `px_per_m` 65, `settle_*`,
+  `rl_position_tolerance_px`, `rl_heading_tolerance_deg` 15, `tag_heading_offset_deg` 0,
+  `auto_heading_check`, `insert_depth_m`, `insert_timeout_sec` 20, `place_*`, plus inherited ones.
+* **`auto_heading_check`:** while driving nearly straight, compares the tag's motion with its believed
+  heading and corrects the offset in 90° steps after two agreeing measurements.
+* **Fake-world results** (5 start poses): every cycle stage → insert → lift → deliver → place succeeded;
+  tips 0.43–0.69 m deep, within 0.06 m of the pocket centres. It is kinematic: no contact, no pallet physics.
 
 ## Status and open items
 
@@ -186,13 +209,15 @@ ros2 topic echo /forklift_1/goal_status                # "reached: staging" / "r
 * Future: EOITAG task allocation in `fleet_controller.py`, using time-to-goal from `eval_deploy.py` (or the
   critic value) as travel cost; more robot types (e.g. `forklift_c`), each with a config in `robot.py` and
   its own registered task and policy; lift after insert / place-down skills.
-* Insert policy eval is in `eval_insert.py` (100% at level 0, 78% at level 1, 0% face hits). Staging
-  uses the existing nav policy (0.5 m / ~30°). Warehouse insert is not verified yet.
+* Insert policy eval is in `eval_insert.py` (100% at level 0, 78% at level 1, 0% face hits).
+* **Not yet verified in the warehouse:** insert / lift / carry / place with real contact. Watch for the
+  pallet (a dynamic rigid body) being pushed, and for the load sliding while carrying.
+* `/World/o3dyn_pallet_3` has no ArUco mesh, so the tracker never sees pallet 3.
 
 ## Working rules
 
 * Don't change the topic interface (`vision_data`, `lift_target_pos`, `ackermann`, `goal_status`, `stop`,
-  `mast_target_pos`); the fleet / allocation layer depends on it. `/forklift_N/scan` is additive.
+  `mast_target_pos`); the fleet / allocation layer depends on it. `/forklift_N/scan` and `/forklift_N/place` are additive.
 * Retrain after changing env dynamics, observations or rewards. Re-export after every retrain. Check with
   `eval_deploy.py` / `eval_insert.py` before telling the user a policy works.
 * Run training in the background (`train.sh` does) and watch it with a log filter; a full run takes ~30 min.
