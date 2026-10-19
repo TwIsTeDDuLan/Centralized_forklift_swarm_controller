@@ -3,21 +3,19 @@
 # Centralized Forklift Swarm - Unified Runner (Multi-Terminal Launcher)
 # ==============================================================================
 # Description:
-#   Orchestrates the entire swarm stack:
-#     1. Vision Tracker (vision_tracker.py via run_tracker.sh)
-#     2. Fleet Controller (fleet_controller.py via run_fleet_controller.sh)
-#     3. Forklift 1 Node (Fork_Lift_1.py via run_forklift_1.sh)
-#     4. Forklift 2 Node (Fork_Lift_2.py via run_forklift_2.sh)
-#     5. Forklift 3 Node (Fork_Lift_3.py via run_forklift_3.sh)
-#   Launches each component into separate dedicated terminal windows or tabs.
+#   ROS side of the warehouse stack. Isaac Sim is still opened by hand
+#   (Issasim Models/Environment.usd → Play).
+#     1. Vision Tracker (run_tracker.sh)
+#     2. Fleet Controller (run_fleet_controller.sh) — optional
+#     3. RL forklifts 1–3 (run_rl_forklift.sh) — default
+#        or the old hand-tuned Fork_Lift_N.py with --classic
 #
 # Usage:
-#   ./run_all.sh                  # Launch all 5 components in separate windows
-#   ./run_all.sh --tabs           # Launch all 5 components as tabs in one window
-#   ./run_all.sh --no-forklifts   # Launch only Tracker & Controller
-#   ./run_all.sh --only-forklifts # Launch only the 3 Forklift nodes
-#   ./run_all.sh --check          # Preflight health check for all components
-#   ./run_all.sh --help           # Show this help message
+#   ./run_all.sh                  # Tracker + fleet + RL 1 2 3
+#   ./run_all.sh --rl --no-fleet  # Tracker + RL (matches the usual manual loop)
+#   ./run_all.sh --classic        # Old hand-tuned Fork_Lift_N.py nodes
+#   ./run_all.sh --tabs / --same-term
+#   ./run_all.sh --check
 # ==============================================================================
 
 if [ -z "${BASH_VERSION:-}" ]; then
@@ -81,14 +79,15 @@ show_help() {
 Usage: ./run_all.sh [OPTIONS]
 
 Component Selection:
-  -a, --all                Launch all 5 components: Tracker, Controller, Forklifts 1-3 (default)
-  --no-forklifts           Launch only Vision Tracker and Fleet Controller
-  --only-forklifts         Launch only the 3 Forklift nodes (Forklift 1, 2, 3)
-  -t, --tracker            Launch only the Vision Tracker
-  -f, --controller         Launch only the Fleet Controller
-  --fl1                    Launch only Forklift 1
-  --fl2                    Launch only Forklift 2
-  --fl3                    Launch only Forklift 3
+  -a, --all                Tracker + fleet + forklifts 1-3 (default)
+  --rl                     Use rl_forklift_controller.py (default)
+  --classic                Use the old hand-tuned Fork_Lift_N.py nodes
+  --no-fleet               Skip the fleet prompt
+  --no-forklifts           Tracker and fleet only
+  --only-forklifts         Forklift nodes only
+  -t, --tracker            Vision tracker only
+  -f, --controller         Fleet controller only
+  --fl1 / --fl2 / --fl3    One forklift
 
 Terminal Display Modes:
   -w, --windows            Open each component in a separate terminal window (default)
@@ -103,11 +102,10 @@ Options:
   -h, --help               Display this help guide
 
 Examples:
-  ./run_all.sh                     # Launch all 5 components in separate windows
-  ./run_all.sh --tabs              # Launch all 5 components in tabs
-  ./run_all.sh --no-forklifts      # Launch Tracker + Fleet Controller only
-  ./run_all.sh --only-forklifts    # Launch Forklifts 1, 2, and 3 only
-  ./run_all.sh --check             # Check environment for all scripts and exit
+  ./run_all.sh --rl --no-fleet     # Usual loop: tracker + RL 1 2 3
+  ./run_all.sh                     # Also opens the fleet prompt (pallet 1 1)
+  ./run_all.sh --classic           # Hand-tuned controllers
+  ./run_all.sh --check
 EOF
     exit 0
 }
@@ -118,6 +116,7 @@ LAUNCH_CONTROLLER=1
 LAUNCH_FL1=1
 LAUNCH_FL2=1
 LAUNCH_FL3=1
+USE_RL=1
 TERMINAL_MODE="windows"
 CHECK_ONLY=0
 NO_ARUCO=0
@@ -151,6 +150,18 @@ while [[ $# -gt 0 ]]; do
             LAUNCH_FL1=1
             LAUNCH_FL2=1
             LAUNCH_FL3=1
+            shift
+            ;;
+        --rl)
+            USE_RL=1
+            shift
+            ;;
+        --classic|--hand-tuned)
+            USE_RL=0
+            shift
+            ;;
+        --no-fleet)
+            LAUNCH_CONTROLLER=0
             shift
             ;;
         -t|--tracker)
@@ -238,12 +249,13 @@ cd "${SCRIPT_DIR}"
 
 TRACKER_SCRIPT="${SCRIPT_DIR}/run_tracker.sh"
 CONTROLLER_SCRIPT="${SCRIPT_DIR}/run_fleet_controller.sh"
+RL_SCRIPT="${SCRIPT_DIR}/run_rl_forklift.sh"
 FL1_SCRIPT="${SCRIPT_DIR}/run_forklift_1.sh"
 FL2_SCRIPT="${SCRIPT_DIR}/run_forklift_2.sh"
 FL3_SCRIPT="${SCRIPT_DIR}/run_forklift_3.sh"
 
 # Ensure runner scripts exist and are executable
-ALL_SCRIPTS=("${TRACKER_SCRIPT}" "${CONTROLLER_SCRIPT}" "${FL1_SCRIPT}" "${FL2_SCRIPT}" "${FL3_SCRIPT}")
+ALL_SCRIPTS=("${TRACKER_SCRIPT}" "${CONTROLLER_SCRIPT}" "${RL_SCRIPT}" "${FL1_SCRIPT}" "${FL2_SCRIPT}" "${FL3_SCRIPT}")
 for s in "${ALL_SCRIPTS[@]}"; do
     if [[ ! -f "$s" ]]; then
         log_err "Required script not found: $s"
@@ -264,14 +276,22 @@ if [[ "${CHECK_ONLY}" -eq 1 ]]; then
     log_info "2/5 Running Fleet Controller diagnostics..."
     "${CONTROLLER_SCRIPT}" --check
     echo ""
-    log_info "3/5 Checking Forklift 1..."
-    "${FL1_SCRIPT}" --check
-    echo ""
-    log_info "4/5 Checking Forklift 2..."
-    "${FL2_SCRIPT}" --check
-    echo ""
-    log_info "5/5 Checking Forklift 3..."
-    "${FL3_SCRIPT}" --check
+    if [[ "${USE_RL}" -eq 1 ]]; then
+        log_info "3/3 Checking RL forklift runner and policies..."
+        [[ -f "${SCRIPT_DIR}/policies/forklift_nav.npz" ]] || { log_err "missing policies/forklift_nav.npz"; exit 1; }
+        [[ -f "${SCRIPT_DIR}/rl_forklift_controller.py" ]] || { log_err "missing rl_forklift_controller.py"; exit 1; }
+        log_ok "RL nav policy present"
+        [[ -f "${SCRIPT_DIR}/policies/forklift_insert.npz" ]] && log_ok "RL insert policy present" || log_warn "no insert policy; nodes will stop at staging"
+    else
+        log_info "3/5 Checking Forklift 1..."
+        "${FL1_SCRIPT}" --check
+        echo ""
+        log_info "4/5 Checking Forklift 2..."
+        "${FL2_SCRIPT}" --check
+        echo ""
+        log_info "5/5 Checking Forklift 3..."
+        "${FL3_SCRIPT}" --check
+    fi
     echo ""
     log_ok "All component diagnostics passed successfully!"
     exit 0
@@ -325,6 +345,18 @@ CONTROLLER_CMD_STR="$(build_term_cmd "run_fleet_controller.sh")"
 FL1_CMD_STR="$(build_term_cmd "run_forklift_1.sh")"
 FL2_CMD_STR="$(build_term_cmd "run_forklift_2.sh")"
 FL3_CMD_STR="$(build_term_cmd "run_forklift_3.sh")"
+RL_IDS=()
+[[ ${LAUNCH_FL1} -eq 1 ]] && RL_IDS+=(1)
+[[ ${LAUNCH_FL2} -eq 1 ]] && RL_IDS+=(2)
+[[ ${LAUNCH_FL3} -eq 1 ]] && RL_IDS+=(3)
+LAUNCH_RL=0
+if [[ ${USE_RL} -eq 1 && ${#RL_IDS[@]} -gt 0 ]]; then
+    LAUNCH_RL=1
+    LAUNCH_FL1=0
+    LAUNCH_FL2=0
+    LAUNCH_FL3=0
+fi
+RL_CMD_STR="$(build_term_cmd "run_rl_forklift.sh" "${RL_IDS[@]}")"
 
 # --- Banner ---
 echo ""
@@ -335,6 +367,8 @@ echo -e "  • Terminal Emulator: $([[ -n "${TERM_BIN}" ]] && echo "${TERM_BIN}"
 echo -e "  • Launch Mode:       ${TERMINAL_MODE}"
 echo -e "  • Vision Tracker:    $([[ ${LAUNCH_TRACKER} -eq 1 ]] && echo "${C_GREEN}ENABLED${C_RESET}" || echo "${C_GRAY}SKIPPED${C_RESET}")"
 echo -e "  • Fleet Controller:  $([[ ${LAUNCH_CONTROLLER} -eq 1 ]] && echo "${C_GREEN}ENABLED${C_RESET}" || echo "${C_GRAY}SKIPPED${C_RESET}")"
+echo -e "  • Controllers:       $([[ ${USE_RL} -eq 1 ]] && echo "${C_GREEN}RL (nav+insert)${C_RESET}" || echo "${C_YELLOW}hand-tuned${C_RESET}")"
+echo -e "  • RL Forklifts:      $([[ ${LAUNCH_RL} -eq 1 ]] && echo "${C_GREEN}${RL_IDS[*]}${C_RESET}" || echo "${C_GRAY}SKIPPED${C_RESET}")"
 echo -e "  • Forklift 1 Node:   $([[ ${LAUNCH_FL1} -eq 1 ]] && echo "${C_GREEN}ENABLED${C_RESET}" || echo "${C_GRAY}SKIPPED${C_RESET}")"
 echo -e "  • Forklift 2 Node:   $([[ ${LAUNCH_FL2} -eq 1 ]] && echo "${C_GREEN}ENABLED${C_RESET}" || echo "${C_GRAY}SKIPPED${C_RESET}")"
 echo -e "  • Forklift 3 Node:   $([[ ${LAUNCH_FL3} -eq 1 ]] && echo "${C_GREEN}ENABLED${C_RESET}" || echo "${C_GRAY}SKIPPED${C_RESET}")"
@@ -365,6 +399,7 @@ launch_in_gnome_terminal_tabs() {
 
     [[ ${LAUNCH_TRACKER} -eq 1 ]] && add_tab "[Swarm] Vision Tracker" "${TRACKER_CMD_STR}"
     [[ ${LAUNCH_CONTROLLER} -eq 1 ]] && add_tab "[Swarm] Fleet Controller" "${CONTROLLER_CMD_STR}"
+    [[ ${LAUNCH_RL} -eq 1 ]] && add_tab "[Swarm] RL Forklifts ${RL_IDS[*]}" "${RL_CMD_STR}"
     [[ ${LAUNCH_FL1} -eq 1 ]] && add_tab "[Swarm] Forklift 1" "${FL1_CMD_STR}"
     [[ ${LAUNCH_FL2} -eq 1 ]] && add_tab "[Swarm] Forklift 2" "${FL2_CMD_STR}"
     [[ ${LAUNCH_FL3} -eq 1 ]] && add_tab "[Swarm] Forklift 3" "${FL3_CMD_STR}"
@@ -392,6 +427,7 @@ launch_in_separate_windows() {
 
     [[ ${LAUNCH_TRACKER} -eq 1 ]] && open_window "[Swarm] Vision Tracker" "${TRACKER_CMD_STR}"
     [[ ${LAUNCH_CONTROLLER} -eq 1 ]] && open_window "[Swarm] Fleet Controller" "${CONTROLLER_CMD_STR}"
+    [[ ${LAUNCH_RL} -eq 1 ]] && open_window "[Swarm] RL Forklifts ${RL_IDS[*]}" "${RL_CMD_STR}"
     [[ ${LAUNCH_FL1} -eq 1 ]] && open_window "[Swarm] Forklift 1" "${FL1_CMD_STR}"
     [[ ${LAUNCH_FL2} -eq 1 ]] && open_window "[Swarm] Forklift 2" "${FL2_CMD_STR}"
     [[ ${LAUNCH_FL3} -eq 1 ]] && open_window "[Swarm] Forklift 3" "${FL3_CMD_STR}"
@@ -419,6 +455,7 @@ launch_same_terminal() {
 
     [[ ${LAUNCH_TRACKER} -eq 1 ]] && { "${TRACKER_SCRIPT}" "${TRACKER_ARGS[@]}" 2>&1 | sed -u "s/^/${C_BLUE}[TRACKER]${C_RESET}    /" & PIDS+=($!); }
     [[ ${LAUNCH_CONTROLLER} -eq 1 ]] && { "${CONTROLLER_SCRIPT}" 2>&1 | sed -u "s/^/${C_MAGENTA}[CONTROLLER]${C_RESET} /" & PIDS+=($!); }
+    [[ ${LAUNCH_RL} -eq 1 ]] && { "${RL_SCRIPT}" "${RL_IDS[@]}" 2>&1 | sed -u "s/^/${C_CYAN}[RL]${C_RESET}        /" & PIDS+=($!); }
     [[ ${LAUNCH_FL1} -eq 1 ]] && { "${FL1_SCRIPT}" 2>&1 | sed -u "s/^/${C_CYAN}[FORKLIFT-1]${C_RESET} /" & PIDS+=($!); }
     [[ ${LAUNCH_FL2} -eq 1 ]] && { "${FL2_SCRIPT}" 2>&1 | sed -u "s/^/${C_GREEN}[FORKLIFT-2]${C_RESET} /" & PIDS+=($!); }
     [[ ${LAUNCH_FL3} -eq 1 ]] && { "${FL3_SCRIPT}" 2>&1 | sed -u "s/^/${C_YELLOW}[FORKLIFT-3]${C_RESET} /" & PIDS+=($!); }
@@ -446,6 +483,7 @@ esac
 if [[ "${TERMINAL_MODE}" != "same" ]]; then
     echo ""
     log_ok "All requested component terminals have been launched!"
-    echo -e "  • Use the dedicated terminal windows to view live output."
-    echo -e "  • Terminals stay open when stopped so you can inspect logs anytime."
+    echo -e "  • Isaac Sim must already be playing Environment.usd."
+    echo -e "  • Send goals from cmds.txt  (or type 'pallet 1 1' in the fleet prompt)."
+    echo -e "  • For insert: ./run_fork_lidar.sh then Run attach_fork_lidar.py in Script Editor."
 fi

@@ -16,14 +16,16 @@ Ros2 scripts/            ROS 2 nodes (system Python 3.12, numpy only; no torch)
   vision_tracker.py        overhead camera -> /forklift_N/vision_data, pallet_N/vision_data
   forklift_controller.py   hand-tuned go-to-pose controller (base class)
   Fork Lifts/Fork_Lift_N.py  launch the hand-tuned controller for forklift N
-  rl_forklift_controller.py  RL controller (subclass of ForkliftController, same topics)
-  rl_policy.py             numpy MLP + observation builder (no ROS imports; shared with eval_deploy.py)
-  policies/forklift_nav.npz  exported policy (weights + metadata)
+  rl_forklift_controller.py  two-policy RL node: nav to staging, then insert (same topics + /scan)
+  rl_policy.py             numpy MLP + nav/insert observation builders (no ROS imports)
+  policies/forklift_nav.npz, forklift_insert.npz
+  attach_fork_lidar.py     runtime 3x64 fork lidar -> /forklift_N/scan (does not edit USDs)
   fleet_controller.py, run_*.sh, cmds.txt (example topic commands)
-isaac_lab_forklift/      Isaac Lab package `forklift_lab` (task Isaac-Forklift-Nav-Direct); see its README.md
-  forklift_lab/robot.py    articulation cfg, joint names, geometry constants
-  forklift_lab/tasks/      DirectRLEnv + cfg + RSL-RL PPO cfg (agents/)
-  scripts/                 train.sh, play.sh, export_policy.py, drive_check.py, eval_deploy.py
+isaac_lab_forklift/      Isaac Lab package `forklift_lab`; see its README.md
+  forklift_lab/robot.py    articulation cfg, fork-tip / lidar mount constants
+  forklift_lab/pallet.py   EUR pocket geometry + o3dyn visual spawn
+  forklift_lab/tasks/      Isaac-Forklift-Nav-Direct, Isaac-Forklift-Insert-Direct
+  scripts/                 train.sh, play.sh, export_policy.py, eval_deploy.py, eval_insert.py
   logs/                    training runs (git-ignored)
 ```
 
@@ -98,40 +100,73 @@ isaac_lab_forklift/      Isaac Lab package `forklift_lab` (task Isaac-Forklift-N
   drive. `robot.py` overrides it to 0. Isaac Sim still has it unless the user sets it in `Forklift_ROS2.usd`.
 * The texture "asset can not be found" errors (`./Props/Source/Textures/...`) are cosmetic: the asset pack's
   textures were never copied. Ignore them.
+* **Insert env** `forklift_lab/tasks/forklift_insert_env.py` (`ForkliftInsertEnv`):
+  * Starts in a 1–2 m staging band (tips in front of the 1200 mm face). Entry is the long face;
+    800 mm openings do not fit the 0.59 m tine spacing. Pockets: y ±0.275 m, 0.40 m wide, z 0.02–0.10 m.
+  * Actor (196): 3×64 fork-mounted ranges / 4 m, last action (3), lift joint in [−1, 1].
+  * Critic: actor + tip-to-pocket vectors, depth / lateral / yaw / height errors, contact force.
+  * Actions (3): ×240 deg/s speed, ×55° steer, ×0.3 m/s lift (USD limits −0.15…2.0 m).
+  * Rewards: potential on Euclidean tip-to-pocket distance, +20 full insert, −50 face hit (contact
+    with a face stringer while tips are not in a pocket opening) and terminate, −10 other failure.
+  * Success = both tips past 0.40 m into the pockets (reward target 0.70 m), inside the pocket AABB, no face contact.
+  * Stacks: 1–3 decks (pitch 0.144 m), random target level. `o3dyn_pallet.usd` is visual only
+    (authored scale is not EUR; collision_boxes wraps the load).
+  * Insert observation layout lives in three places: `ForkliftInsertEnv._get_observations`,
+    `rl_policy.py::build_insert_obs`, and `INSERT_OBS` in `export_policy.py`.
 
 ### Commands (from `isaac_lab_forklift/`)
 
 ```bash
-./scripts/train.sh                         # background, 1024 envs, 1000 it (~30 min); log in logs/
-FOREGROUND=1 ./scripts/train.sh --num_envs 16 --max_iterations 3      # smoke test
-./scripts/play.sh                          # Kit viewer, 16 envs; green bar = goal fork direction
-~/IsaacLab/.venv/bin/python scripts/export_policy.py   # latest run -> ../Ros2 scripts/policies/forklift_nav.npz
-source ~/IsaacLab/.venv/bin/activate
-~/IsaacLab/isaaclab.sh -p scripts/drive_check.py       # sign / speed check with fixed commands
-~/IsaacLab/isaaclab.sh -p scripts/eval_deploy.py --level 1   # closed loop through rl_policy.py + emulated tracker
+./scripts/train.sh                         # nav, background, 1024 envs, 1000 it (~30 min); log in logs/
+TASK=Isaac-Forklift-Insert-Direct ./scripts/train.sh --num_envs 256
+FOREGROUND=1 TASK=Isaac-Forklift-Insert-Direct ./scripts/train.sh --num_envs 16 --max_iterations 3
+TASK=Isaac-Forklift-Insert-Direct ./scripts/play.sh
+~/IsaacLab/.venv/bin/python scripts/export_policy.py
+~/IsaacLab/.venv/bin/python scripts/export_policy.py --experiment forklift_insert
+~/IsaacLab/isaaclab.sh -p scripts/eval_deploy.py --level 1
+~/IsaacLab/isaaclab.sh -p scripts/eval_insert.py --level 1
 ```
 
 `export_policy.py` needs no simulator. It reads `model_*.pt` (`actor_state_dict`, `mlp.{0,2,4}`) and
 the run's `params/env.yaml`, and stores scales and tolerances as JSON metadata in the `.npz`. The ROS node
 reads them from there, so don't hard-code them in the node.
 
-### Current policy
+### Current policies
 
-Run `2026-10-18_11-46-17/model_999.pt`. `eval_deploy.py --level 1` (int pixels, heading low-pass,
+Nav: run `2026-10-18_11-46-17/model_999.pt`. `eval_deploy.py --level 1` (int pixels, heading low-pass,
 latency): 100% of any-heading goals reached (9.5 s average), 92.7% of heading goals reached
 (16.2 s), 0% failures, the rest timeouts at 45 s.
+
+Insert: run `2026-10-19_00-31-36/model_1500.pt` (numpy `forklift_insert.npz`). `eval_insert.py`
+(env 3×64 scan + numpy actor, no extra range noise):
+
+| Curriculum | Reached | Face-hit | Failed | Timeout | Mean time |
+|---|---|---|---|---|---|
+| level 0 (staging band, single deck) | 100.0% | 0% | 0% | 0% | 3.3 s |
+| level 1 (max pose/lift noise, 1–3 decks) | 77.9% | 0% | 0% | 22.1% | 3.3 s |
+
+Level-1 timeouts sit ~0.45 m into the face with ~5 cm mean lateral error — a cocked one-tine-in
+approach, not a collision. Do not claim warehouse insertion works until it is run with
+`vision_tracker.py` and `attach_fork_lidar.py`.
 
 ## ROS deployment
 
 ```bash
 cd "Ros2 scripts" && ./run_rl_forklift.sh 1 2 3        # or: python3 rl_forklift_controller.py 1 --ros-args -p ...
 ros2 topic pub --once /forklift_1/lift_target_pos geometry_msgs/msg/Pose2D "{x: 900.0, y: 360.0, theta: 30.0}"
-ros2 topic echo /forklift_1/goal_status                # "reached: ..." / "failed: ..."
+ros2 topic echo /forklift_1/goal_status                # "reached: staging" / "reached: inserted" / "failed: ..."
 ```
 
-* **Parameters:** `policy_path`, `px_per_m` (65), `settle_ticks` (3), `rl_position_tolerance_px`
-  (~16), `rl_heading_tolerance_deg` (15), `tag_heading_offset_deg` (0), `auto_heading_check` (true).
-  `goal_timeout_sec` etc. are inherited.
+* **Parameters:** `policy_path`, `insert_policy_path`, `auto_insert` (true), `px_per_m` (65),
+  `settle_ticks` (3), `rl_position_tolerance_px` (0.5 m → ~33 px for staging),
+  `rl_heading_tolerance_deg` (30), `tag_heading_offset_deg` (0), `auto_heading_check` (true),
+  `insert_progress_m` (2.0), `insert_timeout_sec` (20). `goal_timeout_sec` etc. are inherited.
+* **State machine:** `lift_target_pos` is the *tag* staging pose (tips 1.5 m from the pallet face,
+  so the tag goal is ~4.0 m back). Nav policy drives there; if `auto_insert` the insert policy
+  then commands `ackermann` and `/lift` (mast PID is disabled). Needs `/forklift_N/scan` (192 ranges).
+* **Fleet `pallet` command:** computes that staging pose from `/pallet_N/vision_data` and the
+  forklift pose (forks pointed at the pallet). Pallet topics are absolute `/pallet_N/vision_data`.
+* **Warehouse lidar:** `attach_fork_lidar.py` after the scene is open (do not edit Environment.usd).
 * **`auto_heading_check`:** while driving nearly straight, the node compares the tag's actual motion
   with its believed heading. After two agreeing measurements it corrects the offset in 90° steps and logs
   the value to make permanent.
@@ -150,14 +185,16 @@ ros2 topic echo /forklift_1/goal_status                # "reached: ..." / "faile
 * Consider fixing `heading_offset_deg` in `forklift_controller.py` (user's code; ask first).
 * Future: EOITAG task allocation in `fleet_controller.py`, using time-to-goal from `eval_deploy.py` (or the
   critic value) as travel cost; more robot types (e.g. `forklift_c`), each with a config in `robot.py` and
-  its own registered task and policy; lift / pallet-pickup skills.
+  its own registered task and policy; lift after insert / place-down skills.
+* Insert policy eval is in `eval_insert.py` (100% at level 0, 78% at level 1, 0% face hits). Staging
+  uses the existing nav policy (0.5 m / ~30°). Warehouse insert is not verified yet.
 
 ## Working rules
 
 * Don't change the topic interface (`vision_data`, `lift_target_pos`, `ackermann`, `goal_status`, `stop`,
-  `mast_target_pos`); the fleet / allocation layer depends on it.
+  `mast_target_pos`); the fleet / allocation layer depends on it. `/forklift_N/scan` is additive.
 * Retrain after changing env dynamics, observations or rewards. Re-export after every retrain. Check with
-  `eval_deploy.py` before telling the user a policy works.
+  `eval_deploy.py` / `eval_insert.py` before telling the user a policy works.
 * Run training in the background (`train.sh` does) and watch it with a log filter; a full run takes ~30 min.
 * `Issasim Models/*.usd` are the user's scene files. Read them with `pxr` (`Usd.Stage.Open`,
   `Sdf.Layer.ExportToString`); don't edit them without asking.

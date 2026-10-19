@@ -3,7 +3,7 @@
 Drives the forklifts with the exported numpy policy through the same code the ROS node runs
 (``Ros2 scripts/rl_policy.py``), fed by an emulated vision_tracker.py:
   * tag position in integer pixels (the tracker truncates to int), 65 px/m, image y down,
-  * tag heading through the tracker's low-pass filter (alpha 0.3 per frame).
+  * tag heading = fork direction (body yaw + 180 deg), through the tracker's low-pass filter (alpha 0.3).
 Goals come from the env (same distribution as training at curriculum level --level).
 
     ~/IsaacLab/isaaclab.sh -p scripts/eval_deploy.py [--policy ../Ros2\\ scripts/policies/forklift_nav.npz]
@@ -81,8 +81,9 @@ def main():
                 vis_yaw[i] = wrap(vis_yaw[i] + own_args.heading_alpha * d)
                 u, v = int(ref[i, 0] * s + 5000), int(-ref[i, 1] * s + 5000)  # +5000: keep pixels positive
                 gu, gv = goal[i, 0] * s + 5000, -goal[i, 1] * s + 5000
-                # --- what rl_forklift_controller.py does with it (heading_offset 180 deg) ---
-                body_yaw = wrap(vis_yaw[i] + math.pi - math.pi)
+                theta = wrap(vis_yaw[i] + math.pi)  # the tag's top edge points along the forks (body -X)
+                # --- what rl_forklift_controller.py does with it (tag_heading_offset_deg 0) ---
+                body_yaw = wrap(theta + 0.0 - math.pi)
                 g_yaw = wrap(goal_yaw[i]) if has_heading[i] > 0.5 else None
                 obs = build_actor_obs(meta, (u / s, -v / s), body_yaw, (gu / s, -gv / s), g_yaw, last_action[i])
                 actions[i] = policy(obs)

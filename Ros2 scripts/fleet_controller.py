@@ -3,6 +3,8 @@
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 # Add ROS Python packages path if the shell has not sourced ROS setup.
 ros_python_path = '/opt/ros/jazzy/lib/python3.12/site-packages'
 if os.path.isdir(ros_python_path) and ros_python_path not in sys.path:
@@ -16,17 +18,24 @@ from std_msgs.msg import Empty, String
 import math
 import threading
 
+from rl_policy import pallet_entry_heading, staging_tag_pixels
+
 FORKLIFT_IDS = (1, 2, 3)
 PALLET_IDS = (1, 2, 3)
-# Must match the forklift nodes' heading_offset_deg parameter (tag front edge -> forks).
-FORK_HEADING_OFFSET_DEG = 180.0
+# Tracker theta -> fork direction. The forklift tag's top edge points along the forks (measured in
+# Environment.usd), matching rl_forklift_controller.py's tag_heading_offset_deg default.
+FORK_HEADING_OFFSET_DEG = 0.0
+# Lift applied after a successful insert when `pallet` gets no lift argument.
+DEFAULT_PICK_LIFT_M = 0.3
 
 HELP_TEXT = """
 Commands (positions are camera pixels, heading in degrees, lift in meters):
   Heading is the direction the forks point: 0 = right, 90 = up, 180 = left, -90 = down.
   <forklift> <x> <y> [heading_deg|-] [lift_m] Drive forklift to (x, y); '-' or omitted heading = any
   lift <forklift> <height_m>                  Set only the lift height
-  pallet <pallet> <forklift> [lift_m]         Send forklift to the last seen position of a pallet
+  pallet <pallet> <forklift> [lift_m]         Pick up: stage 1.5 m in front of the pallet's 1200 mm face,
+                                              insert the forks, then lift to lift_m (default 0.3 m)
+  place <forklift>                            Put the carried pallet down and back out of it
   stop <forklift|all>                         Stop driving immediately
   status                                      Show latest forklift and pallet poses
   help                                        Show this help
@@ -37,6 +46,9 @@ Examples:
   2 900 200 90 1.2     -> Forklift 2 drives to (900, 200), forks facing up, lift to 1.2 m
   3 270 630 - 0.5      -> Forklift 3 drives to (270, 630), any heading, lift to 0.5 m
   lift 3 0.5           -> Forklift 3 lift to 0.5 m
+  pallet 1 2 0.3       -> Forklift 2 picks up pallet 1 and lifts it 0.3 m
+  2 640 360 90         -> (while carrying) drive the pallet to (640, 360), forks up
+  place 2              -> lower the pallet and back out
 """
 
 
@@ -72,6 +84,9 @@ class FleetController(Node):
         self.forklift_lift_target_pubs = {}
         self.forklift_mast_target_pubs = {}
         self.forklift_stop_pubs = {}
+        self.forklift_place_pubs = {}
+        # Lift height to command once a forklift reports "reached: inserted".
+        self.pending_pick_lift = {}
         for fid in FORKLIFT_IDS:
             self.forklift_target_pubs[fid] = self.create_publisher(
                 Pose2D, f'/forklift_{fid}/target_pos', 10
@@ -85,13 +100,16 @@ class FleetController(Node):
             self.forklift_stop_pubs[fid] = self.create_publisher(
                 Empty, f'/forklift_{fid}/stop', 10
             )
+            self.forklift_place_pubs[fid] = self.create_publisher(
+                Empty, f'/forklift_{fid}/place', 10
+            )
 
         self.sub_goal_status = {}
         for fid in FORKLIFT_IDS:
             self.sub_goal_status[fid] = self.create_subscription(
                 String,
                 f'/forklift_{fid}/goal_status',
-                lambda msg, i=fid: self.get_logger().info(f"[Forklift {i}] Goal {msg.data}"),
+                lambda msg, i=fid: self.goal_status_callback(i, msg),
                 10
             )
 
@@ -105,6 +123,18 @@ class FleetController(Node):
 
     def pallet_callback(self, pallet_id: int, msg: Pose2D):
         self.pallet_poses[pallet_id] = msg
+
+    def goal_status_callback(self, forklift_id: int, msg: String):
+        self.get_logger().info(f"[Forklift {forklift_id}] Goal {msg.data}")
+        height = self.pending_pick_lift.pop(forklift_id, None)
+        if height is None:
+            return
+        if msg.data.startswith('reached: inserted'):
+            self.send_lift_target(forklift_id, height)
+        elif msg.data.startswith('reached: staging'):
+            self.pending_pick_lift[forklift_id] = height  # still waiting for the insert
+        else:
+            self.get_logger().warn(f"[Forklift {forklift_id}] Pick-up did not finish; lift not raised.")
 
     # ------Command senders------
     def send_drive_target(self, forklift_id: int, x: float, y: float, heading_deg: float = math.nan):
@@ -121,6 +151,11 @@ class FleetController(Node):
         cmd.linear.z = float(height)
         self.forklift_mast_target_pubs[forklift_id].publish(cmd)
         self.get_logger().info(f"[Forklift {forklift_id}] Lift target: {height:.2f} m")
+
+    def send_place(self, forklift_id: int):
+        self.pending_pick_lift.pop(forklift_id, None)
+        self.forklift_place_pubs[forklift_id].publish(Empty())
+        self.get_logger().info(f"[Forklift {forklift_id}] Place requested")
 
     def send_stop(self, forklift_id: int):
         self.forklift_stop_pubs[forklift_id].publish(Empty())
@@ -146,7 +181,12 @@ class FleetController(Node):
                     raise ValueError("usage: stop <forklift|all>")
                 targets = FORKLIFT_IDS if parts[1].lower() == 'all' else (self.parse_forklift(parts[1]),)
                 for fid in targets:
+                    self.pending_pick_lift.pop(fid, None)
                     self.send_stop(fid)
+            elif cmd == 'place':
+                if len(parts) != 2:
+                    raise ValueError("usage: place <forklift>")
+                self.send_place(self.parse_forklift(parts[1]))
             elif cmd == 'lift':
                 if len(parts) != 3:
                     raise ValueError("usage: lift <forklift> <height_m>")
@@ -159,9 +199,15 @@ class FleetController(Node):
                 pose = self.pallet_poses.get(pallet_id)
                 if pose is None:
                     raise ValueError(f"pallet {pallet_id} has not been seen by the camera yet")
-                self.send_drive_target(fid, pose.x, pose.y)
-                if len(parts) == 4:
-                    self.send_lift_target(fid, float(parts[3]))
+                fl = self.forklift_poses.get(fid)
+                if fl is None:
+                    raise ValueError(f"forklift {fid} has not been seen by the camera yet")
+                # Forks enter the 1200 mm face nearest the forklift; tips stage 1.5 m from that face.
+                heading = pallet_entry_heading(pose.theta, (fl.x, fl.y), (pose.x, pose.y))
+                sx, sy = staging_tag_pixels((pose.x, pose.y), heading, px_per_m=65.0)
+                # The lift goes up only after the insert succeeds (raised forks cannot enter the pockets).
+                self.pending_pick_lift[fid] = float(parts[3]) if len(parts) == 4 else DEFAULT_PICK_LIFT_M
+                self.send_drive_target(fid, sx, sy, math.degrees(heading))
             else:
                 if len(parts) not in (3, 4, 5):
                     raise ValueError("usage: <forklift> <x> <y> [heading_deg] [lift_m]  (type 'help')")

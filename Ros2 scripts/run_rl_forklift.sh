@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Run the RL go-to-pose controller for one or more forklifts (same topics as run_forklift_N.sh).
-#   ./run_rl_forklift.sh 1            # forklift 1
-#   ./run_rl_forklift.sh 1 2 3        # all three, in the background of this shell; Ctrl+C stops all
-#   ./run_rl_forklift.sh 1 --ros-args -p px_per_m:=65.0
-# Policy: policies/forklift_nav.npz (from isaac_lab_forklift/scripts/export_policy.py).
+# Two-policy RL controllers (nav to staging, then insert). Isaac Sim must already be playing.
+#   ./run_rl_forklift.sh              # forklifts 1 2 3 (default)
+#   ./run_rl_forklift.sh 1            # just forklift 1
+#   ./run_rl_forklift.sh 1 2 3 --ros-args -p auto_insert:=true
+# Policies: policies/forklift_nav.npz and policies/forklift_insert.npz
 set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -16,15 +16,27 @@ if [[ -z "${ROS_DISTRO:-}" ]] && [[ -f /opt/ros/jazzy/setup.bash ]]; then
 fi
 
 if [[ ! -f policies/forklift_nav.npz ]]; then
-    echo "[ERROR] policies/forklift_nav.npz not found; run isaac_lab_forklift/scripts/export_policy.py first" >&2
+    echo "[ERROR] policies/forklift_nav.npz not found; from isaac_lab_forklift/ run:" >&2
+    echo "  ~/IsaacLab/.venv/bin/python scripts/export_policy.py" >&2
     exit 1
+fi
+if [[ ! -f policies/forklift_insert.npz ]]; then
+    echo "[WARN] policies/forklift_insert.npz missing; nodes will stop at staging (no insert)." >&2
 fi
 
 IDS=()
 while [[ $# -gt 0 && "$1" =~ ^[0-9]+$ ]]; do IDS+=("$1"); shift; done
-[[ ${#IDS[@]} -eq 0 ]] && IDS=(1)
+[[ ${#IDS[@]} -eq 0 ]] && IDS=(1 2 3)
 
 export PYTHONUNBUFFERED=1
+
+echo "RL forklifts ${IDS[*]}  (Ctrl+C stops all)"
+echo "  nav:    policies/forklift_nav.npz"
+echo "  insert: policies/forklift_insert.npz"
+echo "  goals:  /forklift_N/lift_target_pos   (see cmds.txt)"
+echo "  insert also needs /forklift_N/scan    (./run_fork_lidar.sh after the scene is playing)"
+echo ""
+
 if [[ ${#IDS[@]} -eq 1 ]]; then
     exec python3 rl_forklift_controller.py "${IDS[0]}" "$@"
 fi

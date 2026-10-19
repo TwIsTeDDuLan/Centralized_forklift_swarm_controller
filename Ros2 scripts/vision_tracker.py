@@ -44,9 +44,9 @@ class SwarmTracker(Node):
         self.pub_fl3_vision = self.create_publisher(Pose2D, '/forklift_3/vision_data', 10)
 
         # For Pallets
-        self.pub_plt1_vision = self.create_publisher(Pose2D, 'pallet_1/vision_data', 10)
-        self.pub_plt2_vision = self.create_publisher(Pose2D, 'pallet_2/vision_data', 10)
-        self.pub_plt3_vision = self.create_publisher(Pose2D, 'pallet_3/vision_data', 10)
+        self.pub_plt1_vision = self.create_publisher(Pose2D, '/pallet_1/vision_data', 10)
+        self.pub_plt2_vision = self.create_publisher(Pose2D, '/pallet_2/vision_data', 10)
+        self.pub_plt3_vision = self.create_publisher(Pose2D, '/pallet_3/vision_data', 10)
 
         # ----------------------
 

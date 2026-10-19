@@ -1,12 +1,31 @@
-ros2 topic pub --once /forklift_1/mast_target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 1.50}, angular: {x: 0.0, y: 0.0, z: 2.0}}" 
+# Source ROS in this terminal first:
+#   source /opt/ros/jazzy/setup.bash
+#
+# Warehouse loop (Isaac Sim already playing Environment.usd):
+#   ./run_tracker.sh
+#   ./run_rl_forklift.sh 1 2 3
+#   ./run_fork_lidar.sh          # then Run attach_fork_lidar.py in Script Editor
+# Then one of the pubs below. Watch:
+#   ros2 topic echo /forklift_1/goal_status
 
-ros2 topic pub --once /forklift_1/mast_target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 2.0}, angular: {x: 0.0, y: 0.0, z: 2.0}}" && ros2 topic pub --once /forklift_2/mast_target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 1.50}, angular: {x: 0.0, y: 0.0, z: 2.0}}" && ros2 topic pub --once /forklift_3/mast_target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 2.0}, angular: {x: 0.0, y: 0.0, z: 2.0}}" 
- 
+# ------ drive: tag pixel goal (nav). theta = fork heading deg, or omit / nan = any ------
+# All three (the usual one):
+ros2 topic pub --once /forklift_1/lift_target_pos geometry_msgs/msg/Pose2D "{x: 1087.0, y: 360.0, theta: 30.0}" && ros2 topic pub --once /forklift_2/lift_target_pos geometry_msgs/msg/Pose2D "{x: 350.0, y: 185.0, theta: 30.0}" && ros2 topic pub --once /forklift_3/lift_target_pos geometry_msgs/msg/Pose2D "{x: 270.0, y: 630.0, theta: 210.0}"
 
+# One forklift:
+# ros2 topic pub --once /forklift_1/lift_target_pos geometry_msgs/msg/Pose2D "{x: 900.0, y: 360.0, theta: 30.0}"
 
-ros2 topic pub /forklift_1/target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 1.50}, angular: {x: 0.0, y: 0.0, z: 2.0}}" 
+# Staging in front of a pallet (tips ~1.5 m out). Prefer the fleet prompt:
+#   ./run_fleet_controller.sh
+#   pallet 1 1
+# Or publish a staging tag pose yourself (theta = forks into the pallet):
+# ros2 topic pub --once /forklift_1/lift_target_pos geometry_msgs/msg/Pose2D "{x: 900.0, y: 360.0, theta: 0.0}"
 
-ros2 topic pub --once /forklift_1/lift_target_pos geometry_msgs/msg/Pose2D "{x: 1087.0, y: 360.0, theta: 30.0}" && ros2 topic pub --once /forklift_2/lift_target_pos geometry_msgs/msg/Pose2D "{x: 350.0, y: 185.0, theta: 30.0}" && ros2 topic pub --once /forklift_3/lift_target_pos geometry_msgs/msg/Pose2D "{x: 270.0, y: 630.0, theta: 30.0}"
+# ------ mast height (hand PID; disabled while the insert policy is running) ------
+# ros2 topic pub --once /forklift_1/mast_target_pos geometry_msgs/msg/Twist "{linear: {x: 0.0, y: 0.0, z: 1.50}, angular: {x: 0.0, y: 0.0, z: 2.0}}"
 
+# ------ stop ------
+# ros2 topic pub --once /forklift_1/stop std_msgs/msg/Empty "{}"
 
-ros2 topic pub /forklift_1/ackermann ackermann_msgs/msg/AckermannDriveStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: ''}, drive: {steering_angle: 60.0, steering_angle_velocity: 0.0, speed: 60.0, acceleration: 0.0, jerk: 0.0}}" -r 10
+# ------ raw ackermann (bypasses the RL node; only if you are not running the controller) ------
+# ros2 topic pub /forklift_1/ackermann ackermann_msgs/msg/AckermannDriveStamped "{header: {stamp: {sec: 0, nanosec: 0}, frame_id: ''}, drive: {steering_angle: 60.0, steering_angle_velocity: 0.0, speed: 60.0, acceleration: 0.0, jerk: 0.0}}" -r 10

@@ -28,4 +28,4 @@ fi
 setsid nohup "${CMD[@]}" > "$LOG" 2>&1 < /dev/null &
 echo "training $TASK (pid $!), log: $LOG"
 echo "progress:     tail -f \"$LOG\" | grep -E --line-buffered 'Learning iteration|Mean reward|success_rate|curriculum'"
-echo "tensorboard:  $ISAACLAB/.venv/bin/tensorboard --logdir \"$HERE/logs/rsl_rl/forklift_nav\""
+echo "tensorboard:  $ISAACLAB/.venv/bin/tensorboard --logdir \"$HERE/logs/rsl_rl\""

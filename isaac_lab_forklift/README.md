@@ -7,31 +7,41 @@ a target `(x, y)`, optionally with a final fork heading, then runs the policy as
 
 ```
 isaac_lab_forklift/                 <- Local Disk: code, logs, checkpoints
-  forklift_lab/robot.py             articulation cfg (USD gains, joint names, geometry)
-  forklift_lab/tasks/               Isaac-Forklift-Nav-Direct (DirectRLEnv) + PPO cfg
+  forklift_lab/robot.py             articulation cfg (USD gains, fork tips, lidar mount)
+  forklift_lab/pallet.py            EUR pocket geometry + o3dyn visual spawn
+  forklift_lab/tasks/               Isaac-Forklift-Nav-Direct, Isaac-Forklift-Insert-Direct
   scripts/train.sh | play.sh        wrappers around Isaac Lab's own train.py / play.py
   scripts/export_policy.py          checkpoint -> numpy weights for ROS (no sim needed)
   scripts/drive_check.py            physics / sign-convention check with fixed commands
-  scripts/eval_deploy.py            closed-loop test of the *deployed* code path (emulated camera)
+  scripts/eval_deploy.py            closed-loop nav policy (emulated camera)
+  scripts/eval_insert.py            closed-loop insert policy (env scan + numpy actor)
   logs/                             rsl_rl runs (git-ignored)
 Ros2 scripts/
-  rl_policy.py                      numpy MLP + observation builder (shared by the node and eval_deploy)
-  rl_forklift_controller.py         ROS 2 node (subclass of ForkliftController)
+  rl_policy.py                      numpy MLP + nav/insert observation builders
+  rl_forklift_controller.py         two-policy ROS 2 node (nav then insert)
   run_rl_forklift.sh                ./run_rl_forklift.sh 1 2 3
-  policies/forklift_nav.npz         exported policy (~45 kB)
+  policies/forklift_nav.npz, forklift_insert.npz
+  attach_fork_lidar.py              warehouse 3x64 scan -> /forklift_N/scan
 ```
 
 ## Commands
 
 ```bash
 cd "/media/twisted/Local Disk/Projects/Robotics/Centralized_forklift_swarm_controller/isaac_lab_forklift"
-./scripts/train.sh                                    # background, 1024 envs, 1000 iterations (~30 min on the 3060)
-tail -f logs/train_Isaac-Forklift-Nav-Direct.log | grep -E --line-buffered 'Learning iteration|success_rate'
-~/IsaacLab/.venv/bin/tensorboard --logdir logs/rsl_rl/forklift_nav
-./scripts/play.sh                                     # watch it in the Kit viewer (also writes exported/policy.pt/.onnx)
-~/IsaacLab/.venv/bin/python scripts/export_policy.py  # -> ../Ros2 scripts/policies/forklift_nav.npz
-source ~/IsaacLab/.venv/bin/activate && ~/IsaacLab/isaaclab.sh -p scripts/eval_deploy.py --level 1.0
+./scripts/train.sh                                    # nav, background, 1024 envs, 1000 iterations (~30 min)
+TASK=Isaac-Forklift-Insert-Direct ./scripts/train.sh --num_envs 256
+tail -f logs/train_Isaac-Forklift-Insert-Direct.log | grep -E --line-buffered 'Learning iteration|success_rate|face_hit'
+~/IsaacLab/.venv/bin/tensorboard --logdir logs/rsl_rl
+TASK=Isaac-Forklift-Insert-Direct ./scripts/play.sh
+~/IsaacLab/.venv/bin/python scripts/export_policy.py --experiment forklift_insert
+source ~/IsaacLab/.venv/bin/activate && ~/IsaacLab/isaaclab.sh -p scripts/eval_insert.py --level 1.0
 ```
+
+Pallet pickup on the warehouse scene: launch the RL nodes, attach the fork lidar (Script Editor or
+`isaaclab.sh -p ../Ros2\ scripts/attach_fork_lidar.py` with the scene open), then `pallet 1 1` in
+the fleet controller. Staging success is 0.5 m / ~30°. Insert success is both tips 0.40 m into the
+pockets (reward target 0.70 m) with no face-stringer contact. Run `eval_insert.py` before claiming
+the insert policy works.
 
 Then, with the Isaac Sim warehouse and `vision_tracker.py` running:
 
@@ -39,6 +49,28 @@ Then, with the Isaac Sim warehouse and `vision_tracker.py` running:
 cd "../Ros2 scripts" && ./run_rl_forklift.sh 1 2 3
 ros2 topic pub --once /forklift_1/lift_target_pos geometry_msgs/msg/Pose2D "{x: 1087.0, y: 360.0, theta: 30.0}"
 ```
+
+## Current policies
+
+Nav (`2026-10-18_11-46-17/model_999`, `forklift_nav.npz`). From `eval_deploy.py --level 1`: goals
+1–9 m away, the deployed numpy code path, int-pixel vision with the heading low-pass, and 50% of
+envs with one extra step of latency.
+
+| Goals | Reached | Failed | Timeout (45 s) | Mean time |
+|---|---|---|---|---|
+| any heading (`theta = NaN`) | 100.0% | 0% | 0% | 9.5 s (0.66 m/s average) |
+| with heading (±10° in training) | 92.7% | 0% | 7.3% | 16.2 s |
+
+Insert (`2026-10-19_00-31-36/model_1500`, `forklift_insert.npz`). From `eval_insert.py` (env 3×64
+scan + numpy actor):
+
+| Curriculum | Reached | Face-hit | Failed | Timeout | Mean time |
+|---|---|---|---|---|---|
+| level 0 (tight staging, single deck) | 100.0% | 0% | 0% | 0% | 3.3 s |
+| level 1 (max pose/lift noise, stacks) | 77.9% | 0% | 0% | 22.1% | 3.3 s |
+
+Not yet tested: the ROS node driving the Isaac Sim warehouse scene (`Environment.usd`) with the real
+camera, `vision_tracker.py`, and `attach_fork_lidar.py`.
 
 ## Changes from the original plan, and why
 
@@ -57,8 +89,14 @@ ros2 topic pub --once /forklift_1/lift_target_pos geometry_msgs/msg/Pose2D "{x: 
 
 ## Conventions (checked with `drive_check.py`)
 
-* Body +X = counterweight side; forks point along −X. `vision_tracker` theta = body +X yaw, so the
-  fork heading is theta + 180° (`heading_offset_deg`, as in `forklift_controller.py`).
+* Body +X = counterweight side; forks point along −X.
+* `vision_tracker` theta (the tag's top edge) points along the **forks**: measured from the tag mesh UVs
+  in `Environment.usd`. So the RL node uses `tag_heading_offset_deg = 0`. `forklift_controller.py`
+  assumes 180, which its drive/steering sign auto-calibration hides for position goals, but heading
+  goals then come out 180° off. The RL node also measures the offset from its own driving (in 90° steps)
+  and corrects it (`auto_heading_check`).
+* Goal `theta` [deg] = the direction the forks should point when the forklift stops, in the tracker's
+  convention: 0 = image right, 90 = image up, 180 = image left, −90 = image down. NaN = any heading.
 * Actions are joint targets in Ackermann-topic units: `speed = a0 * 240 deg/s`, `steering = a1 * 55 deg`.
   Measured in the sim: negative speed = forks first, and (+speed, +steer) yaws clockwise. These are the
   same signs as the hand-tuned controller's defaults (`drive_sign = -1`, `steering_sign = -1`).
