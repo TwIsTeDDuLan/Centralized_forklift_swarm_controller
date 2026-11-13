@@ -10,6 +10,7 @@
 #   ros2 topic echo /forklift_1/goal_status
 #
 # Test without Isaac Sim (fake forklift + pallet): ./run_fake_pick_test.sh
+# Test live warehouse RL policies (interactive menu / CLI): ./test_rl_policies.sh
 
 # ====== fleet> prompt (recommended) ======
 #   pallet 1 2 0.3     forklift 2 picks up pallet 1: stage, insert, then lift 0.3 m

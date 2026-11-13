@@ -48,8 +48,8 @@ class RLForkliftController(ForkliftController):
         self.px_per_m = p('px_per_m', 65.0).value
         self.settle_ticks = p('settle_ticks', 3).value
         # Max tag motion / turn over the settle window that still counts as stopped.
-        self.settle_motion_px = p('settle_motion_px', 4.0).value
-        self.settle_turn_deg = p('settle_turn_deg', 3.0).value
+        self.settle_motion_px = p('settle_motion_px', 5.0).value
+        self.settle_turn_deg = p('settle_turn_deg', 3.5).value
         self._settle_from = None
         self.auto_calibrate = False
         self.heading_offset = math.radians(p('tag_heading_offset_deg', 0.0).value)
@@ -66,11 +66,15 @@ class RLForkliftController(ForkliftController):
         nav_meta = self.nav_policy.meta
         self.max_speed = nav_meta['max_wheel_speed_deg']
         self.max_steering = nav_meta['max_steer_deg']
-        # Staging must land inside the insert policy's training start band (lateral <= 0.25 m, yaw <= 20 deg):
-        # with 0.5 m / 30 deg it went in one-tine-crooked in tests. These are the nav policy's own
-        # tolerances (0.2 m, 10 deg) with a little slack.
-        self.position_tolerance = p('rl_position_tolerance_px', nav_meta['pos_tolerance'] * 1.25 * self.px_per_m).value
-        self.heading_tolerance = math.radians(p('rl_heading_tolerance_deg', 15.0).value)
+        # General navigation tolerances:
+        self.position_tolerance = p('rl_position_tolerance_px', max(25.0, nav_meta['pos_tolerance'] * 1.5 * self.px_per_m)).value
+        self.heading_tolerance = math.radians(p('rl_heading_tolerance_deg', 20.0).value)
+
+        # Staging tolerances for auto_insert:
+        # Forklift must be within ~0.40 m (26 px) of the staging target and within 18° of the entry normal,
+        # ensuring the forks are pointed directly at the pallet face before insert takes over.
+        self.staging_position_tolerance = p('rl_staging_pos_tolerance_px', 26.0).value  # ~0.40 m
+        self.staging_heading_tolerance = math.radians(p('rl_staging_heading_tolerance_deg', 18.0).value)
 
         self.insert_policy = None
         self.max_lift_speed = 0.30
@@ -96,7 +100,7 @@ class RLForkliftController(ForkliftController):
         self._place = None
         self.place_lower_m = p('place_lower_m', 0.05).value  # below the insert height when setting down
         self.place_backout_m = p('place_backout_m', 2.5).value
-        self.place_timeout = p('place_timeout_sec', 20.0).value
+        self.place_timeout = p('place_timeout_sec', 25.0).value
         ns = f'/forklift_{self.fid}'
         self.create_subscription(LaserScan, f'{ns}/scan', self.scan_callback, 10)
         self.create_subscription(Empty, f'{ns}/place', self.place_callback, 10)
@@ -194,13 +198,17 @@ class RLForkliftController(ForkliftController):
             return
         dist_px = math.hypot(self.goal.x - self.cur_pos.x, self.goal.y - self.cur_pos.y)
         heading_error = None if self.goal_heading is None else wrap(self.goal_heading - self.heading())
-        heading_ok = heading_error is None or abs(heading_error) <= self.heading_tolerance
+
+        is_staging = (not self.carrying and self.auto_insert and self.insert_policy is not None)
+        pos_tol = self.staging_position_tolerance if is_staging else self.position_tolerance
+        head_tol = self.staging_heading_tolerance if is_staging else self.heading_tolerance
+
+        heading_ok = heading_error is None or abs(heading_error) <= head_tol
         detail = f"position error {dist_px:.1f} px"
         if heading_error is not None:
             detail += f", heading error {math.degrees(heading_error):.1f}°"
-        if dist_px < self.position_tolerance and heading_ok:
-            # Like training (success needs < 0.1 m/s): the goal only counts once the forklift has stopped
-            # there, not while it sweeps through the tolerance mid-turn.
+
+        if dist_px < pos_tol and heading_ok:
             if self.inside_ticks == 0:
                 self._settle_from = (self.cur_pos.x, self.cur_pos.y, self.heading())
             self.inside_ticks += 1
@@ -208,12 +216,13 @@ class RLForkliftController(ForkliftController):
             moving = (math.hypot(self.cur_pos.x - sx, self.cur_pos.y - sy) > self.settle_motion_px
                       or abs(wrap(self.heading() - sh)) > math.radians(self.settle_turn_deg))
             if moving:
+                self._settle_from = (self.cur_pos.x, self.cur_pos.y, self.heading())
                 self.inside_ticks = 0
             elif self.inside_ticks >= self.settle_ticks:
                 if self.carrying:
                     self.finish(True, f"delivered ({detail})")
                     return
-                if self.auto_insert and self.insert_policy is not None:
+                if is_staging:
                     self.state = INSERT
                     self._policy_owns_lift = True
                     self._insert_start = now
@@ -228,6 +237,7 @@ class RLForkliftController(ForkliftController):
                 return
         else:
             self.inside_ticks = 0
+            self._settle_from = None
 
         goal_yaw = None if self.goal_heading is None else wrap(self.goal_heading - math.pi)
         obs = build_actor_obs(self.nav_policy.meta, self.to_meters(self.cur_pos.x, self.cur_pos.y), self.body_yaw(),
@@ -246,7 +256,8 @@ class RLForkliftController(ForkliftController):
         )
 
     def _insert_tick(self, now: float):
-        if now - (self._insert_start or now) > self.insert_timeout:
+        elapsed = now - (self._insert_start or now)
+        if elapsed > self.insert_timeout:
             self.finish(False, f"insert timed out after {self.insert_timeout:.0f} s")
             return
         if self._scan is None or self._scan_time is None or now - self._scan_time > 0.5:
@@ -257,9 +268,10 @@ class RLForkliftController(ForkliftController):
         if self._insert_goal is None:
             self._insert_goal = self.insert_travel(self._scan)
             if self._insert_goal is None:
-                self.finish(False, "pallet face not in the fork scan at staging; not inserting blind")
-                return
-        if self._staging_start is not None:
+                if elapsed > 3.0:
+                    self.finish(False, "pallet face not in the fork scan at staging; not inserting blind")
+                    return
+        if self._staging_start is not None and self._insert_goal is not None:
             dx = (self.cur_pos.x - self._staging_start[0]) / self.px_per_m
             dy = -(self.cur_pos.y - self._staging_start[1]) / self.px_per_m
             progress = dx * math.cos(self.heading()) + dy * math.sin(self.heading())
@@ -301,14 +313,20 @@ class RLForkliftController(ForkliftController):
         meta = self.insert_policy.meta
         n_az = 64
         lidar_behind_tips = 0.138  # LIDAR_OFFSET_L is 13.8 cm behind the tips along the forks
-        level = np.asarray(ranges, dtype=np.float64)[n_az:2 * n_az]  # 0 deg channel
-        hit = level < 0.95 * meta['lidar_max_range']
+        r = np.asarray(ranges, dtype=np.float64).reshape(-1, n_az)
+        max_r = meta['lidar_max_range']
+        hit = r < 0.95 * max_r
         if not hit.any():
             return None
-        # Distance along the forks to the nearest face point; with a yaw error the face may only be in the
-        # side rays (the insert policy trained with up to 20 deg), so use every ray, not just the centre.
         az = np.linspace(-math.radians(45.0), math.radians(45.0), n_az)
-        face = float((level * np.cos(az))[hit].min())
+        forward_dists = []
+        for ch in range(r.shape[0]):
+            ch_hit = hit[ch]
+            if ch_hit.any():
+                forward_dists.append((r[ch] * np.cos(az))[ch_hit].min())
+        if not forward_dists:
+            return None
+        face = float(min(forward_dists))
         travel = max(0.0, face - lidar_behind_tips) + self.insert_depth_m
         self.get_logger().info(f"Pallet face {face - lidar_behind_tips:.2f} m ahead of the tips; "
                                f"inserting until the forks moved {travel:.2f} m.")
@@ -337,7 +355,7 @@ class RLForkliftController(ForkliftController):
             self.finish(True, f"placed (backed out {backed:.2f} m)")
             return
         self.publish_lift(pl['lift'])
-        self.publish_drive(0.5 * self.max_speed, 0.0)
+        self.publish_drive(self.max_speed, 0.0)
 
     # ------Heading offset self-check------
     def check_heading_offset(self, speed: float, steering: float):

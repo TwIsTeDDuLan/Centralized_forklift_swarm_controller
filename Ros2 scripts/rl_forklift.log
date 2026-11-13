@@ -1,0 +1,167 @@
+RL forklifts 1 2 3  (Ctrl+C stops all)
+  nav:    policies/forklift_nav.npz
+  insert: policies/forklift_insert.npz
+  goals:  /forklift_N/lift_target_pos   (see cmds.txt)
+  insert also needs /forklift_N/scan    (./run_fork_lidar.sh after the scene is playing)
+
+[INFO] [1794596230.320567811] [forklift_3]: Forklift 3 online. Goals: /forklift_3/lift_target_pos (x, y px, theta deg or NaN), lift: /forklift_3/mast_target_pos, stop: /forklift_3/stop
+[INFO] [1794596230.320786933] [forklift_1]: Forklift 1 online. Goals: /forklift_1/lift_target_pos (x, y px, theta deg or NaN), lift: /forklift_1/mast_target_pos, stop: /forklift_1/stop
+[INFO] [1794596230.326193864] [forklift_3]: Insert policy loaded: /media/twisted/Local Disk/Projects/Robotics/Centralized_forklift_swarm_controller/Ros2 scripts/policies/forklift_insert.npz (logs/rsl_rl/forklift_insert/2026-11-13_20-25-17/model_3999.pt)
+[INFO] [1794596230.326734658] [forklift_1]: Insert policy loaded: /media/twisted/Local Disk/Projects/Robotics/Centralized_forklift_swarm_controller/Ros2 scripts/policies/forklift_insert.npz (logs/rsl_rl/forklift_insert/2026-11-13_20-25-17/model_3999.pt)
+[INFO] [1794596230.327969761] [forklift_3]: RL nav policy loaded: /media/twisted/Local Disk/Projects/Robotics/Centralized_forklift_swarm_controller/Ros2 scripts/policies/forklift_nav.npz (logs/rsl_rl/forklift_nav/2026-10-18_11-46-17/model_999.pt)
+[INFO] [1794596230.328062152] [forklift_2]: Forklift 2 online. Goals: /forklift_2/lift_target_pos (x, y px, theta deg or NaN), lift: /forklift_2/mast_target_pos, stop: /forklift_2/stop
+[INFO] [1794596230.328581510] [forklift_1]: RL nav policy loaded: /media/twisted/Local Disk/Projects/Robotics/Centralized_forklift_swarm_controller/Ros2 scripts/policies/forklift_nav.npz (logs/rsl_rl/forklift_nav/2026-10-18_11-46-17/model_999.pt)
+[INFO] [1794596230.336402613] [forklift_2]: Insert policy loaded: /media/twisted/Local Disk/Projects/Robotics/Centralized_forklift_swarm_controller/Ros2 scripts/policies/forklift_insert.npz (logs/rsl_rl/forklift_insert/2026-11-13_20-25-17/model_3999.pt)
+[INFO] [1794596230.339111425] [forklift_2]: RL nav policy loaded: /media/twisted/Local Disk/Projects/Robotics/Centralized_forklift_swarm_controller/Ros2 scripts/policies/forklift_nav.npz (logs/rsl_rl/forklift_nav/2026-10-18_11-46-17/model_999.pt)
+[WARN] [1794596247.020983616] [forklift_1]: Place requested while not carrying; backing out anyway.
+[INFO] [1794596247.021544539] [forklift_1]: Placing: lowering forks to -0.15 m, then backing out 2.5 m.
+[WARN] [1794596247.060922514] [forklift_1]: Place ignored: finish or /stop the current goal first.
+[WARN] [1794596247.101107839] [forklift_1]: Place ignored: finish or /stop the current goal first.
+[WARN] [1794596247.140975976] [forklift_1]: Place ignored: finish or /stop the current goal first.
+[WARN] [1794596247.181065016] [forklift_1]: Place ignored: finish or /stop the current goal first.
+[WARN] [1794596250.909198737] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[WARN] [1794596256.609242599] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[WARN] [1794596259.709436563] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[WARN] [1794596262.709506374] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596263.609099751] [forklift_1]: Goal reached: placed (backed out 2.50 m)
+[INFO] [1794596318.645556190] [forklift_1]: New staging goal (RL): x=453.2, y=198.0, heading=180.0°
+[INFO] [1794596318.685946066] [forklift_1]: New staging goal (RL): x=453.2, y=198.0, heading=180.0°
+[INFO] [1794596318.709508271] [forklift_1]: [nav] pos=(664, 174) heading=180° position error 212.2 px, heading error 0.0° cmd speed=-240 steer=5
+[INFO] [1794596318.725879568] [forklift_1]: New staging goal (RL): x=453.2, y=198.0, heading=180.0°
+[INFO] [1794596318.766349489] [forklift_1]: New staging goal (RL): x=453.2, y=198.0, heading=180.0°
+[INFO] [1794596318.806541208] [forklift_1]: New staging goal (RL): x=453.2, y=198.0, heading=180.0°
+[INFO] [1794596319.710121940] [forklift_1]: [nav] pos=(656, 176) heading=178° position error 204.0 px, heading error 2.3° cmd speed=-240 steer=-15
+[INFO] [1794596320.810678819] [forklift_1]: [nav] pos=(640, 179) heading=176° position error 187.8 px, heading error 3.7° cmd speed=-240 steer=-17
+[INFO] [1794596321.909976168] [forklift_1]: [nav] pos=(622, 182) heading=174° position error 169.6 px, heading error 6.3° cmd speed=-240 steer=-18
+[INFO] [1794596322.910021442] [forklift_1]: [nav] pos=(605, 184) heading=170° position error 152.5 px, heading error 9.9° cmd speed=-240 steer=-20
+[INFO] [1794596324.010030108] [forklift_1]: [nav] pos=(586, 186) heading=168° position error 133.4 px, heading error 12.3° cmd speed=-240 steer=-21
+[INFO] [1794596325.109484667] [forklift_1]: [nav] pos=(568, 186) heading=165° position error 115.5 px, heading error 15.0° cmd speed=-240 steer=-22
+[INFO] [1794596326.109812126] [forklift_1]: [nav] pos=(554, 187) heading=162° position error 101.4 px, heading error 18.1° cmd speed=-240 steer=-22
+[INFO] [1794596327.110164379] [forklift_1]: [nav] pos=(538, 186) heading=157° position error 85.7 px, heading error 23.0° cmd speed=-240 steer=-22
+[INFO] [1794596328.210042044] [forklift_1]: [nav] pos=(524, 184) heading=155° position error 72.2 px, heading error 25.4° cmd speed=-240 steer=-20
+[INFO] [1794596329.310324253] [forklift_1]: [nav] pos=(507, 180) heading=152° position error 56.8 px, heading error 27.6° cmd speed=-240 steer=-11
+[WARN] [1794596330.109261337] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596330.809757990] [forklift_1]: [nav] pos=(491, 172) heading=150° position error 45.9 px, heading error 29.5° cmd speed=-83 steer=-10
+[INFO] [1794596331.909458144] [forklift_1]: [nav] pos=(484, 169) heading=149° position error 42.3 px, heading error 30.9° cmd speed=-77 steer=-19
+[INFO] [1794596332.909917629] [forklift_1]: [nav] pos=(478, 167) heading=147° position error 39.7 px, heading error 32.9° cmd speed=-62 steer=-23
+[INFO] [1794596333.910050970] [forklift_1]: [nav] pos=(472, 165) heading=146° position error 38.0 px, heading error 34.3° cmd speed=95 steer=-19
+[WARN] [1794596334.109451218] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596335.009488901] [forklift_1]: [nav] pos=(473, 166) heading=146° position error 37.6 px, heading error 33.8° cmd speed=157 steer=37
+[INFO] [1794596336.009612461] [forklift_1]: [nav] pos=(476, 175) heading=144° position error 32.4 px, heading error 36.3° cmd speed=136 steer=38
+[INFO] [1794596337.109469701] [forklift_1]: [nav] pos=(478, 181) heading=141° position error 30.1 px, heading error 38.6° cmd speed=141 steer=12
+[WARN] [1794596337.809449529] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596338.109955884] [forklift_1]: [nav] pos=(483, 187) heading=140° position error 31.8 px, heading error 40.4° cmd speed=2 steer=-18
+[INFO] [1794596339.210009416] [forklift_1]: [nav] pos=(483, 188) heading=139° position error 31.5 px, heading error 41.4° cmd speed=-123 steer=-2
+[INFO] [1794596340.309968961] [forklift_1]: [nav] pos=(480, 185) heading=139° position error 29.8 px, heading error 41.2° cmd speed=43 steer=-42
+[INFO] [1794596341.409898353] [forklift_1]: [nav] pos=(479, 185) heading=139° position error 28.9 px, heading error 41.1° cmd speed=29 steer=-46
+[INFO] [1794596342.509912645] [forklift_1]: [nav] pos=(480, 184) heading=139° position error 30.3 px, heading error 40.8° cmd speed=16 steer=5
+[INFO] [1794596343.610458124] [forklift_1]: [nav] pos=(478, 184) heading=137° position error 28.5 px, heading error 42.8° cmd speed=138 steer=-37
+[INFO] [1794596344.709922655] [forklift_1]: [nav] pos=(485, 186) heading=140° position error 34.0 px, heading error 40.4° cmd speed=-63 steer=-40
+[INFO] [1794596345.710077683] [forklift_1]: [nav] pos=(486, 185) heading=141° position error 35.3 px, heading error 38.9° cmd speed=0 steer=1
+[INFO] [1794596346.809469961] [forklift_1]: [nav] pos=(481, 181) heading=141° position error 32.6 px, heading error 38.9° cmd speed=50 steer=-5
+[INFO] [1794596347.809740250] [forklift_1]: [nav] pos=(476, 179) heading=140° position error 29.7 px, heading error 40.5° cmd speed=87 steer=-40
+[INFO] [1794596348.809805286] [forklift_1]: [nav] pos=(482, 180) heading=143° position error 34.0 px, heading error 37.3° cmd speed=65 steer=-21
+[WARN] [1794596349.509425721] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596349.809826950] [forklift_1]: [nav] pos=(485, 181) heading=143° position error 36.1 px, heading error 37.0° cmd speed=-11 steer=-11
+[INFO] [1794596350.810661134] [forklift_1]: [nav] pos=(482, 180) heading=141° position error 34.0 px, heading error 38.7° cmd speed=22 steer=1
+[INFO] [1794596351.909934517] [forklift_1]: [nav] pos=(478, 178) heading=142° position error 31.9 px, heading error 38.0° cmd speed=-105 steer=-25
+[INFO] [1794596353.009436658] [forklift_1]: [nav] pos=(477, 177) heading=141° position error 31.8 px, heading error 38.7° cmd speed=52 steer=-37
+[INFO] [1794596354.010319868] [forklift_1]: [nav] pos=(476, 177) heading=142° position error 31.0 px, heading error 37.8° cmd speed=3 steer=-40
+[INFO] [1794596355.109916209] [forklift_1]: [nav] pos=(477, 177) heading=142° position error 31.8 px, heading error 38.1° cmd speed=19 steer=-23
+[INFO] [1794596356.209880897] [forklift_1]: [nav] pos=(476, 177) heading=142° position error 31.0 px, heading error 38.0° cmd speed=157 steer=6
+[INFO] [1794596357.309560198] [forklift_1]: [nav] pos=(483, 183) heading=141° position error 33.4 px, heading error 39.1° cmd speed=58 steer=-24
+[INFO] [1794596358.310057109] [forklift_1]: [nav] pos=(485, 184) heading=141° position error 34.8 px, heading error 38.7° cmd speed=-21 steer=23
+[INFO] [1794596359.410007076] [forklift_1]: [nav] pos=(479, 181) heading=141° position error 30.9 px, heading error 39.2° cmd speed=-93 steer=18
+[INFO] [1794596360.410135077] [forklift_1]: [nav] pos=(477, 179) heading=140° position error 30.5 px, heading error 40.0° cmd speed=170 steer=2
+[INFO] [1794596361.510027186] [forklift_1]: [nav] pos=(481, 184) heading=140° position error 31.2 px, heading error 39.9° cmd speed=118 steer=-5
+[WARN] [1794596362.409309924] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596362.609651519] [forklift_1]: [nav] pos=(485, 188) heading=139° position error 33.4 px, heading error 40.5° cmd speed=-4 steer=-9
+[INFO] [1794596363.611297858] [forklift_1]: [nav] pos=(484, 188) heading=140° position error 32.4 px, heading error 40.5° cmd speed=19 steer=14
+[INFO] [1794596364.710100601] [forklift_1]: [nav] pos=(480, 186) heading=138° position error 29.4 px, heading error 42.3° cmd speed=-138 steer=5
+[INFO] [1794596365.809947339] [forklift_1]: [nav] pos=(479, 185) heading=137° position error 28.9 px, heading error 43.3° cmd speed=184 steer=16
+[INFO] [1794596366.909614777] [forklift_1]: [nav] pos=(483, 190) heading=139° position error 30.9 px, heading error 41.3° cmd speed=105 steer=-16
+[WARN] [1794596367.509458544] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596368.110136978] [forklift_1]: [nav] pos=(485, 191) heading=140° position error 32.6 px, heading error 40.0° cmd speed=-17 steer=-9
+[INFO] [1794596369.209504873] [forklift_1]: [nav] pos=(484, 189) heading=139° position error 32.1 px, heading error 40.9° cmd speed=48 steer=3
+[INFO] [1794596370.209884161] [forklift_1]: [nav] pos=(479, 187) heading=139° position error 28.1 px, heading error 40.9° cmd speed=-133 steer=-16
+[INFO] [1794596371.210253362] [forklift_1]: [nav] pos=(478, 186) heading=138° position error 27.6 px, heading error 41.8° cmd speed=169 steer=-12
+[INFO] [1794596372.309994309] [forklift_1]: [nav] pos=(482, 192) heading=135° position error 29.4 px, heading error 44.8° cmd speed=174 steer=11
+[WARN] [1794596372.334345056] [forklift_1]: Place ignored: finish or /stop the current goal first.
+[WARN] [1794596372.374120095] [forklift_1]: Place ignored: finish or /stop the current goal first.
+[WARN] [1794596372.414072306] [forklift_1]: Place ignored: finish or /stop the current goal first.
+[WARN] [1794596372.454206721] [forklift_1]: Place ignored: finish or /stop the current goal first.
+[WARN] [1794596372.494790271] [forklift_1]: Place ignored: finish or /stop the current goal first.
+[INFO] [1794596373.410212339] [forklift_1]: [nav] pos=(489, 198) heading=136° position error 35.8 px, heading error 44.1° cmd speed=-188 steer=-24
+[INFO] [1794596374.510026599] [forklift_1]: [nav] pos=(489, 196) heading=137° position error 35.9 px, heading error 43.1° cmd speed=-130 steer=51
+[INFO] [1794596375.609796898] [forklift_1]: [nav] pos=(486, 186) heading=140° position error 35.0 px, heading error 39.7° cmd speed=-106 steer=-1
+[INFO] [1794596376.709993757] [forklift_1]: [nav] pos=(480, 181) heading=141° position error 31.8 px, heading error 39.4° cmd speed=-34 steer=-30
+[INFO] [1794596377.710064804] [forklift_1]: [nav] pos=(476, 179) heading=141° position error 29.7 px, heading error 39.2° cmd speed=63 steer=-30
+[INFO] [1794596378.809479842] [forklift_1]: [nav] pos=(477, 180) heading=141° position error 29.9 px, heading error 38.8° cmd speed=149 steer=-2
+[INFO] [1794596379.809809193] [forklift_1]: [nav] pos=(484, 185) heading=140° position error 33.5 px, heading error 39.7° cmd speed=-53 steer=-39
+[WARN] [1794596380.009435545] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596381.209503719] [forklift_1]: [nav] pos=(486, 185) heading=141° position error 35.3 px, heading error 38.9° cmd speed=-13 steer=-10
+[INFO] [1794596382.209652396] [forklift_1]: [nav] pos=(483, 184) heading=141° position error 33.0 px, heading error 39.0° cmd speed=25 steer=8
+[WARN] [1794596383.109176756] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596383.209971571] [forklift_1]: [nav] pos=(479, 181) heading=141° position error 30.9 px, heading error 38.7° cmd speed=31 steer=-10
+[INFO] [1794596384.309873732] [forklift_1]: [nav] pos=(476, 181) heading=141° position error 28.5 px, heading error 39.2° cmd speed=54 steer=-43
+[INFO] [1794596385.310066861] [forklift_1]: [nav] pos=(478, 180) heading=141° position error 30.7 px, heading error 39.3° cmd speed=10 steer=-43
+[INFO] [1794596386.409836032] [forklift_1]: [nav] pos=(478, 180) heading=142° position error 30.7 px, heading error 38.3° cmd speed=29 steer=-18
+[INFO] [1794596387.409846629] [forklift_1]: [nav] pos=(477, 180) heading=143° position error 29.9 px, heading error 37.4° cmd speed=-43 steer=0
+[INFO] [1794596388.510003521] [forklift_1]: [nav] pos=(474, 179) heading=142° position error 28.2 px, heading error 37.8° cmd speed=145 steer=-19
+[INFO] [1794596389.609895522] [forklift_1]: [nav] pos=(481, 184) heading=140° position error 31.2 px, heading error 40.2° cmd speed=120 steer=-8
+[WARN] [1794596390.709538290] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596391.109526391] [forklift_1]: [nav] pos=(485, 187) heading=140° position error 33.7 px, heading error 39.8° cmd speed=-7 steer=-9
+[INFO] [1794596392.109800619] [forklift_1]: [nav] pos=(483, 185) heading=142° position error 32.5 px, heading error 38.3° cmd speed=16 steer=10
+[INFO] [1794596393.209913894] [forklift_1]: [nav] pos=(478, 183) heading=139° position error 29.0 px, heading error 40.9° cmd speed=-55 steer=-1
+[INFO] [1794596394.310025357] [forklift_1]: [nav] pos=(476, 182) heading=139° position error 27.9 px, heading error 40.9° cmd speed=181 steer=8
+[INFO] [1794596395.409492011] [forklift_1]: [nav] pos=(481, 188) heading=138° position error 29.6 px, heading error 41.8° cmd speed=130 steer=-14
+[WARN] [1794596396.109434552] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596396.409644685] [forklift_1]: [nav] pos=(487, 192) heading=139° position error 34.4 px, heading error 41.0° cmd speed=-92 steer=-14
+[INFO] [1794596397.410057753] [forklift_1]: [nav] pos=(486, 191) heading=139° position error 33.6 px, heading error 40.8° cmd speed=7 steer=5
+[INFO] [1794596398.509758146] [forklift_1]: [nav] pos=(480, 185) heading=140° position error 29.8 px, heading error 39.5° cmd speed=28 steer=6
+[INFO] [1794596399.609934670] [forklift_1]: [nav] pos=(477, 184) heading=140° position error 27.6 px, heading error 39.8° cmd speed=67 steer=-44
+[WARN] [1794596399.809496790] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596400.709830090] [forklift_1]: [nav] pos=(477, 183) heading=141° position error 28.2 px, heading error 38.7° cmd speed=69 steer=-40
+[INFO] [1794596401.709908200] [forklift_1]: [nav] pos=(478, 183) heading=140° position error 29.0 px, heading error 39.6° cmd speed=125 steer=-28
+[INFO] [1794596402.709985010] [forklift_1]: [nav] pos=(483, 185) heading=142° position error 32.5 px, heading error 37.9° cmd speed=-193 steer=-18
+[INFO] [1794596403.809962414] [forklift_1]: [nav] pos=(484, 183) heading=142° position error 34.3 px, heading error 38.0° cmd speed=-71 steer=-27
+[INFO] [1794596404.910062128] [forklift_1]: [nav] pos=(478, 179) heading=141° position error 31.3 px, heading error 39.2° cmd speed=94 steer=-25
+[WARN] [1794596405.409224707] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596406.009457186] [forklift_1]: [nav] pos=(476, 178) heading=141° position error 30.4 px, heading error 38.8° cmd speed=123 steer=-22
+[INFO] [1794596407.010065223] [forklift_1]: [nav] pos=(479, 180) heading=142° position error 31.5 px, heading error 38.2° cmd speed=139 steer=9
+[INFO] [1794596408.109713076] [forklift_1]: [nav] pos=(484, 185) heading=141° position error 33.5 px, heading error 38.7° cmd speed=-99 steer=-36
+[WARN] [1794596408.309151206] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596409.109949436] [forklift_1]: [nav] pos=(485, 185) heading=144° position error 34.4 px, heading error 36.5° cmd speed=-71 steer=-16
+[INFO] [1794596410.110058973] [forklift_1]: [nav] pos=(483, 183) heading=141° position error 33.4 px, heading error 38.7° cmd speed=27 steer=-7
+[INFO] [1794596411.209520666] [forklift_1]: [nav] pos=(476, 179) heading=142° position error 29.7 px, heading error 37.8° cmd speed=78 steer=-4
+[INFO] [1794596412.209902647] [forklift_1]: [nav] pos=(474, 177) heading=142° position error 29.6 px, heading error 37.8° cmd speed=161 steer=18
+[WARN] [1794596413.109349119] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596413.309529124] [forklift_1]: [nav] pos=(480, 187) heading=141° position error 29.0 px, heading error 39.3° cmd speed=13 steer=-9
+[INFO] [1794596414.309581564] [forklift_1]: [nav] pos=(481, 189) heading=138° position error 29.2 px, heading error 41.8° cmd speed=-18 steer=25
+[INFO] [1794596415.310012014] [forklift_1]: [nav] pos=(478, 186) heading=139° position error 27.6 px, heading error 41.5° cmd speed=87 steer=-44
+[INFO] [1794596416.409736530] [forklift_1]: [nav] pos=(480, 188) heading=139° position error 28.6 px, heading error 40.7° cmd speed=148 steer=10
+[WARN] [1794596417.409276871] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596417.709921053] [forklift_1]: [nav] pos=(486, 194) heading=138° position error 33.1 px, heading error 41.7° cmd speed=-18 steer=-8
+[INFO] [1794596418.809437295] [forklift_1]: [nav] pos=(485, 192) heading=140° position error 32.4 px, heading error 40.4° cmd speed=-5 steer=16
+[INFO] [1794596419.809662427] [forklift_1]: [nav] pos=(481, 189) heading=138° position error 29.2 px, heading error 42.0° cmd speed=-64 steer=7
+[INFO] [1794596420.909814144] [forklift_1]: [nav] pos=(477, 186) heading=139° position error 26.7 px, heading error 41.3° cmd speed=-9 steer=-42
+[WARN] [1794596421.309336647] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596421.909979594] [forklift_1]: [nav] pos=(476, 186) heading=138° position error 25.8 px, heading error 41.8° cmd speed=195 steer=-12
+[INFO] [1794596423.009312383] [forklift_1]: [nav] pos=(480, 192) heading=137° position error 27.5 px, heading error 43.1° cmd speed=156 steer=-6
+[INFO] [1794596424.009435745] [forklift_1]: [nav] pos=(484, 194) heading=137° position error 31.1 px, heading error 42.8° cmd speed=89 steer=-39
+[WARN] [1794596424.209174230] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596425.009959159] [forklift_1]: [nav] pos=(489, 196) heading=141° position error 35.9 px, heading error 39.0° cmd speed=-161 steer=44
+[INFO] [1794596426.109645371] [forklift_1]: [nav] pos=(488, 189) heading=140° position error 36.0 px, heading error 39.9° cmd speed=-34 steer=26
+[INFO] [1794596427.109914334] [forklift_1]: [nav] pos=(485, 185) heading=141° position error 34.4 px, heading error 39.0° cmd speed=-84 steer=19
+[INFO] [1794596428.209995291] [forklift_1]: [nav] pos=(478, 180) heading=142° position error 30.7 px, heading error 38.1° cmd speed=-147 steer=-11
+[INFO] [1794596429.309857904] [forklift_1]: [nav] pos=(475, 178) heading=142° position error 29.6 px, heading error 38.3° cmd speed=141 steer=-18
+[INFO] [1794596430.409868149] [forklift_1]: [nav] pos=(481, 183) heading=142° position error 31.6 px, heading error 37.9° cmd speed=93 steer=-10
+[INFO] [1794596431.509920960] [forklift_1]: [nav] pos=(485, 185) heading=143° position error 34.4 px, heading error 36.9° cmd speed=-56 steer=33
+[INFO] [1794596432.609969680] [forklift_1]: [nav] pos=(482, 182) heading=142° position error 33.0 px, heading error 38.0° cmd speed=-112 steer=9
+[WARN] [1794596432.809391050] [forklift_1]: No fresh vision data for this forklift; holding until the camera sees it again.
+[INFO] [1794596433.610003516] [forklift_1]: [nav] pos=(474, 179) heading=142° position error 28.2 px, heading error 38.5° cmd speed=96 steer=-19
+[INFO] [1794596434.709470242] [forklift_1]: [nav] pos=(474, 179) heading=142° position error 28.2 px, heading error 38.4° cmd speed=160 steer=14
+[INFO] [1794596435.709947816] [forklift_1]: [nav] pos=(481, 187) heading=141° position error 29.9 px, heading error 38.6° cmd speed=88 steer=-19
+[INFO] [1794596436.809510938] [forklift_1]: [nav] pos=(483, 188) heading=141° position error 31.5 px, heading error 38.7° cmd speed=-45 steer=37
+[INFO] [1794596437.909987727] [forklift_1]: [nav] pos=(481, 185) heading=142° position error 30.7 px, heading error 37.7° cmd speed=-134 steer=18
+[WARN] [1794596438.809639307] [forklift_1]: Goal failed: timed out after 120 s

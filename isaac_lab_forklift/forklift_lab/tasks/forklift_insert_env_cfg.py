@@ -46,7 +46,7 @@ class ForkliftInsertSceneCfg(PalletSceneAssetsCfg, InteractiveSceneCfg):
 @configclass
 class ForkliftInsertEnvCfg(DirectRLEnvCfg):
     decimation = 6
-    episode_length_s = 20.0
+    episode_length_s = 25.0
     sim: SimulationCfg = SimulationCfg(dt=1 / 60, render_interval=decimation, physics=PhysxCfg())
     scene: ForkliftInsertSceneCfg = ForkliftInsertSceneCfg(num_envs=256, env_spacing=5.0, replicate_physics=True)
 
@@ -78,18 +78,18 @@ class ForkliftInsertEnvCfg(DirectRLEnvCfg):
     fork_tip_right_l = FORK_TIP_RIGHT_L
 
     # ------ reset / curriculum ------
-    staging_tip_min = 1.0
-    staging_tip_max = 2.0
-    staging_lat_start = 0.08
-    staging_lat_end = 0.25
-    staging_yaw_start = 0.10  # [rad]
-    staging_yaw_end = 0.35
+    staging_tip_min = 1.2
+    staging_tip_max = 2.5
+    staging_lat_start = 0.12
+    staging_lat_end = 0.35
+    staging_yaw_start = 0.35  # [rad] ~20 deg
+    staging_yaw_end = 0.70    # [rad] ~40 deg
     lift_err_start = 0.02
     lift_err_end = 0.08
     stack_prob_start = 0.0
     stack_prob_end = 0.45
-    curriculum_success_threshold = 0.88
-    curriculum_step = 0.004
+    curriculum_success_threshold = 0.75
+    curriculum_step = 0.008
 
     # ------ success / failure ------
     insert_success_x = 0.40

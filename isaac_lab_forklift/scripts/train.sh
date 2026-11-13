@@ -19,8 +19,17 @@ cd "$HERE"
 # isaaclab.sh -p puts Isaac Sim on the path; it needs the venv active
 source "$ISAACLAB/.venv/bin/activate"
 
+NUM_ENVS_ARG=()
+if [[ ! " $@ " =~ " --num_envs " ]]; then
+    if [[ "$TASK" == *"Insert"* ]]; then
+        NUM_ENVS_ARG=(--num_envs 256)
+    else
+        NUM_ENVS_ARG=(--num_envs 1024)
+    fi
+fi
+
 CMD=("$ISAACLAB/isaaclab.sh" -p "$ISAACLAB/scripts/reinforcement_learning/train.py"
-     --rl_library rsl_rl --task "$TASK" --num_envs 1024 "$@")
+     --rl_library rsl_rl --task "$TASK" "${NUM_ENVS_ARG[@]}" "$@")
 
 if [[ -n "${FOREGROUND:-}" ]]; then
     exec "${CMD[@]}"

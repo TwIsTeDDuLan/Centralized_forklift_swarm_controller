@@ -332,12 +332,13 @@ class ForkliftInsertEnv(DirectRLEnv):
         yz_r = (rp[:, 1] - INSERT_TARGET_Y[1]).abs() + (rp[:, 2] - POCKET_Z_CENTER).abs()
         yaw_err = wrap_to_pi(self.robot.data.heading_w.torch - math.pi).abs()
         skew = (lp[:, 0] - rp[:, 0]).abs()
-        align = yz_l + yz_r + yaw_err + skew
-        gate = torch.exp(-align / 0.18)
+        align = yz_l + yz_r + 2.0 * yaw_err + 2.0 * skew
+        gate = torch.exp(-align / 0.15)
         depth = 0.5 * ((lp[:, 0] - INSERT_TARGET_X).abs() + (rp[:, 0] - INSERT_TARGET_X).abs())
         # Always pull tips toward the face while they are still outside, so staging is not idle.
         outside = 0.5 * (lp[:, 0].clamp(max=0.0).abs() + rp[:, 0].clamp(max=0.0).abs())
-        return -(2.5 * align + gate * depth + 0.30 * outside)
+        crooked_pen = torch.clamp(torch.maximum(lp[:, 0], rp[:, 0]), min=0.0) * (1.0 - gate)
+        return -(3.0 * align + gate * depth + 0.30 * outside + 2.0 * crooked_pen)
 
     def _get_rewards(self) -> torch.Tensor:
         potential = self._potential()
@@ -394,9 +395,9 @@ class ForkliftInsertEnv(DirectRLEnv):
         lift_span = self.cfg.lift_err_start + c * (self.cfg.lift_err_end - self.cfg.lift_err_start)
         stack_p = self.cfg.stack_prob_start + c * (self.cfg.stack_prob_end - self.cfg.stack_prob_start)
 
-        # Keep a slice of easy staging even at curriculum 1 so the policy does not forget
-        # a clean two-tine insert while it practices recoveries.
-        easy = torch.rand(n, device=self.device) < 0.32
+        # Keep a small slice of easier staging so the policy maintains smooth clean inserts
+        # while practicing aggressive angle recoveries.
+        easy = torch.rand(n, device=self.device) < 0.15
         lat_hi = torch.where(easy, self.cfg.staging_lat_start, lat_span)
         yaw_hi = torch.where(easy, self.cfg.staging_yaw_start, yaw_span)
         lift_hi = torch.where(easy, self.cfg.lift_err_start, lift_span)
@@ -432,7 +433,7 @@ class ForkliftInsertEnv(DirectRLEnv):
         lift0 = (pocket_z - 0.241 + sample_uniform(-1.0, 1.0, (n,), self.device) * lift_hi).clamp(*LIFT_LIMITS)
 
         joint_pos = self.robot.data.default_joint_pos.torch[env_ids].clone()
-        joint_pos[:, self._steer_idx] = sample_uniform(-0.3, 0.3, (n, 1), self.device) * self._steer_scale
+        joint_pos[:, self._steer_idx] = sample_uniform(-0.8, 0.8, (n, 1), self.device) * self._steer_scale
         joint_pos[:, self._lift_idx] = lift0.unsqueeze(-1)
         joint_vel = torch.zeros_like(joint_pos)
         self.robot.write_root_pose_to_sim_index(root_pose=root_pose, env_ids=env_ids)

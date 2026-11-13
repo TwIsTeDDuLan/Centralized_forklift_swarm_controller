@@ -140,13 +140,13 @@ Nav: run `2026-10-18_11-46-17/model_999.pt`. `eval_deploy.py --level 1` (int pix
 latency): 100% of any-heading goals reached (9.5 s average), 92.7% of heading goals reached
 (16.2 s), 0% failures, the rest timeouts at 45 s.
 
-Insert: run `2026-10-19_00-31-36/model_1500.pt` (numpy `forklift_insert.npz`). `eval_insert.py`
+Insert: run `2026-11-13_20-25-17/model_3999.pt` (numpy `forklift_insert.npz`, trained with random spawning up to ±40° yaw and ±0.35 m lateral offset). `eval_insert.py`
 (env 3×64 scan + numpy actor, no extra range noise):
 
 | Curriculum | Reached | Face-hit | Failed | Timeout | Mean time |
 |---|---|---|---|---|---|
 | level 0 (staging band, single deck) | 100.0% | 0% | 0% | 0% | 3.3 s |
-| level 1 (max pose/lift noise, 1–3 decks) | 77.9% | 0% | 0% | 22.1% | 3.3 s |
+| level 1 (random spawning ±40° yaw, ±0.35 m lat, 1–3 decks) | 86.2% | 0.9% | 0% | 12.8% | 3.9 s |
 
 Level-1 timeouts sit ~0.45 m into the face with ~5 cm mean lateral error — a cocked one-tine-in
 approach, not a collision. Do not claim warehouse insertion works until it is run with
@@ -163,6 +163,7 @@ cd "Ros2 scripts"
 # Isaac Sim Script Editor: open + Run attach_fork_lidar.py   (./run_fork_lidar.sh prints the steps)
 ./run_fleet_controller.sh            # fleet> pallet 1 2 0.3 | 2 900 500 90 | place 2 | 1 640 360 - | stop all
 ros2 topic echo /forklift_1/goal_status
+./test_rl_policies.sh                # interactive test harness for Nav, Insert, Place policies
 ./run_fake_pick_test.sh [x y yaw]    # whole pick cycle without Isaac Sim (ROS_DOMAIN_ID 81)
 ```
 
