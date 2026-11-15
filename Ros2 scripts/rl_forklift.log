@@ -165,3 +165,9 @@ RL forklifts 1 2 3  (Ctrl+C stops all)
 [INFO] [1794596436.809510938] [forklift_1]: [nav] pos=(483, 188) heading=141° position error 31.5 px, heading error 38.7° cmd speed=-45 steer=37
 [INFO] [1794596437.909987727] [forklift_1]: [nav] pos=(481, 185) heading=142° position error 30.7 px, heading error 37.7° cmd speed=-134 steer=18
 [WARN] [1794596438.809639307] [forklift_1]: Goal failed: timed out after 120 s
+[INFO] [1794599601.595274393] [forklift_3]: Shutting down RL Forklift 3...
+[INFO] [1794599601.595288448] [forklift_2]: Shutting down RL Forklift 2...
+Failed to publish log message to rosout: publisher's context is invalid, at ./src/rcl/publisher.c:423Failed to publish log message to rosout: 
+publisher's context is invalid, at ./src/rcl/publisher.c:423
+[INFO] [1794599601.595395501] [forklift_1]: Shutting down RL Forklift 1...
+Failed to publish log message to rosout: publisher's context is invalid, at ./src/rcl/publisher.c:423

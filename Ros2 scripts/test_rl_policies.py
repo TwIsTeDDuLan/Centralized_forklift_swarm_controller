@@ -47,7 +47,7 @@ from ackermann_msgs.msg import AckermannDriveStamped
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Empty, String
 
-from rl_policy import pallet_entry_heading, staging_tag_pixels
+from rl_policy import pallet_entry_heading, staging_tag_pixels, pocket_corridor_errors
 
 FORKLIFT_IDS = (1, 2, 3)
 PALLET_IDS = (1, 2, 3)
@@ -207,10 +207,11 @@ class RLTesterNode(Node):
             time.sleep(0.05)
 
 
-def wait_for_status(node: RLTesterNode, fid: int, prefix: str, timeout_sec: float = 60.0, target_xy=None, timeout: float = None):
+def wait_for_status(node: RLTesterNode, fid: int, prefix: str, timeout_sec: float = 60.0, target_xy=None, timeout: float = None, corridor_info=None):
     """
     Wait until forklift status matches prefix, or reports failure/rejection.
     Streams live telemetry (position, distance to goal, speed, steering) every second.
+    If corridor_info=(pallet_xy, pallet_entry_heading) is provided, displays pocket corridor alignment errors.
     """
     if timeout is not None:
         timeout_sec = timeout
@@ -252,7 +253,15 @@ def wait_for_status(node: RLTesterNode, fid: int, prefix: str, timeout_sec: floa
                         dist_str = f" dist={dist_px:4.1f}px ({dist_m:.2f}m)"
 
                     hdg_deg = math.degrees(p[2])
-                    p_str = f"pos=({p[0]:5.1f}, {p[1]:5.1f}) forks={hdg_deg:+5.1f}°{dist_str}"
+                    corr_str = ""
+                    if corridor_info is not None:
+                        try:
+                            pal_xy, pal_head = corridor_info
+                            d_par, e_lat, e_yaw = pocket_corridor_errors(pal_xy, pal_head, (p[0], p[1]), p[2], px_per_m=PX_PER_M)
+                            corr_str = f" corr=(d_par={d_par:4.2f}m, e_lat={e_lat:+5.2f}m, e_yaw={e_yaw:+5.1f}°)"
+                        except Exception:
+                            pass
+                    p_str = f"pos=({p[0]:5.1f}, {p[1]:5.1f}) forks={hdg_deg:+5.1f}°{dist_str}{corr_str}"
 
                     # Stall detection: non-zero speed commanded but position unchanged for > 3 s
                     if last_pos is not None:
@@ -364,7 +373,11 @@ def test_pick(node: RLTesterNode, pallet_id: int, fid: int, lift_m: float = 0.3,
     node.send_drive(fid, sx, sy, h_deg)
 
     print("  Step 1: Navigating to staging pose...")
-    ok, st = wait_for_status(node, fid, "reached: staging", timeout=50.0, target_xy=(sx, sy))
+    ok, st = wait_for_status(
+        node, fid, "reached: staging",
+        timeout_sec=50.0, target_xy=(sx, sy),
+        corridor_info=((p_pal[0], p_pal[1]), heading)
+    )
     if not ok:
         print(f"{C_RED}{C_BOLD}[FAIL]{C_RESET} Staging nav failed: {st}")
         return False

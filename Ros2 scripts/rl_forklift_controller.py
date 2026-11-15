@@ -70,11 +70,20 @@ class RLForkliftController(ForkliftController):
         self.position_tolerance = p('rl_position_tolerance_px', max(25.0, nav_meta['pos_tolerance'] * 1.5 * self.px_per_m)).value
         self.heading_tolerance = math.radians(p('rl_heading_tolerance_deg', 20.0).value)
 
-        # Staging tolerances for auto_insert:
-        # Forklift must be within ~0.40 m (26 px) of the staging target and within 18° of the entry normal,
-        # ensuring the forks are pointed directly at the pallet face before insert takes over.
-        self.staging_position_tolerance = p('rl_staging_pos_tolerance_px', 26.0).value  # ~0.40 m
-        self.staging_heading_tolerance = math.radians(p('rl_staging_heading_tolerance_deg', 18.0).value)
+        # Staging tolerances for auto_insert (decomposed into pocket-aligned frame):
+        # Longitudinal: along fork axis (generous: 24 px ~ 0.37 m).
+        # Lateral: perpendicular to fork axis (strict: 6.5 px ~ 0.10 m, ensuring tines enter 0.40 m pockets).
+        # Heading: parallel to pocket axis (strict: 7.0°).
+        self.staging_longitudinal_tol = p('rl_staging_long_tol_px', 24.0).value
+        self.staging_lateral_tol = p('rl_staging_lat_tol_px', 6.5).value
+        self.staging_heading_tol = math.radians(p('rl_staging_heading_tol_deg', 7.0).value)
+        # Fallback Euclidean staging tolerance if no heading constraint:
+        self.staging_position_tolerance = p('rl_staging_pos_tolerance_px', 26.0).value
+
+        # Aerial approach corridor parameters for distant spawns:
+        self.corridor_approach_dist_m = p('corridor_approach_dist_m', 4.0).value  # standoff before staging (4.0 m)
+        self.corridor_lookahead_m = p('corridor_lookahead_m', 1.2).value          # lookahead along centerline (1.2 m)
+        self._staging_phase = 'corridor'  # 'approach', 'corridor', or 'realign'
 
         self.insert_policy = None
         self.max_lift_speed = 0.30
@@ -135,6 +144,30 @@ class RLForkliftController(ForkliftController):
         self.inside_ticks = 0
         self._policy_owns_lift = False
         self._staging_start = None
+        self._settle_from = None
+
+        is_staging = (not self.carrying and self.auto_insert and self.insert_policy is not None and self.goal_heading is not None)
+        if is_staging:
+            v_hat = (math.cos(self.goal_heading), -math.sin(self.goal_heading))
+            n_hat = (-math.sin(self.goal_heading), -math.cos(self.goal_heading))
+            dx = self.cur_pos.x - self.goal.x
+            dy = self.cur_pos.y - self.goal.y
+            d_par = -(dx * v_hat[0] + dy * v_hat[1])
+            e_lat = dx * n_hat[0] + dy * n_hat[1]
+            e_yaw = abs(wrap(self.goal_heading - self.heading()))
+            in_corridor = (0.0 <= d_par <= 2.5 * self.px_per_m and
+                           abs(e_lat) <= 0.35 * self.px_per_m and
+                           e_yaw <= math.radians(25.0))
+            self._staging_phase = 'corridor' if in_corridor else 'approach'
+            if self._staging_phase == 'approach':
+                self.get_logger().info(
+                    f"Distant spawn (dist={math.hypot(dx, dy)/self.px_per_m:.2f} m, "
+                    f"lateral={e_lat/self.px_per_m:.2f} m, heading error={math.degrees(e_yaw):.1f}°). "
+                    f"Engaging aerial corridor approach."
+                )
+        else:
+            self._staging_phase = 'corridor'
+
         heading_txt = 'any' if self.goal_heading is None else f"{msg.theta:.1f}°"
         kind = 'delivery goal (carrying, no insert)' if self.carrying else 'staging goal'
         self.get_logger().info(f"New {kind} (RL): x={msg.x:.1f}, y={msg.y:.1f}, heading={heading_txt}")
@@ -196,52 +229,160 @@ class RLForkliftController(ForkliftController):
         if now - self.goal_start_time > self.goal_timeout:
             self.finish(False, f"timed out after {self.goal_timeout:.0f} s")
             return
-        dist_px = math.hypot(self.goal.x - self.cur_pos.x, self.goal.y - self.cur_pos.y)
-        heading_error = None if self.goal_heading is None else wrap(self.goal_heading - self.heading())
 
-        is_staging = (not self.carrying and self.auto_insert and self.insert_policy is not None)
-        pos_tol = self.staging_position_tolerance if is_staging else self.position_tolerance
-        head_tol = self.staging_heading_tolerance if is_staging else self.heading_tolerance
+        is_staging = (not self.carrying and self.auto_insert and self.insert_policy is not None and self.goal_heading is not None)
 
-        heading_ok = heading_error is None or abs(heading_error) <= head_tol
-        detail = f"position error {dist_px:.1f} px"
-        if heading_error is not None:
-            detail += f", heading error {math.degrees(heading_error):.1f}°"
+        if is_staging:
+            # Vector along forks into the pockets:
+            v_hat = (math.cos(self.goal_heading), -math.sin(self.goal_heading))
+            n_hat = (-math.sin(self.goal_heading), -math.cos(self.goal_heading))
+            dx = self.cur_pos.x - self.goal.x
+            dy = self.cur_pos.y - self.goal.y
+            d_par = -(dx * v_hat[0] + dy * v_hat[1])  # px along centerline ahead of staging
+            e_lat = dx * n_hat[0] + dy * n_hat[1]     # px lateral offset from centerline
+            heading_error = wrap(self.goal_heading - self.heading())
 
-        if dist_px < pos_tol and heading_ok:
-            if self.inside_ticks == 0:
-                self._settle_from = (self.cur_pos.x, self.cur_pos.y, self.heading())
-            self.inside_ticks += 1
-            sx, sy, sh = self._settle_from
-            moving = (math.hypot(self.cur_pos.x - sx, self.cur_pos.y - sy) > self.settle_motion_px
-                      or abs(wrap(self.heading() - sh)) > math.radians(self.settle_turn_deg))
-            if moving:
-                self._settle_from = (self.cur_pos.x, self.cur_pos.y, self.heading())
-                self.inside_ticks = 0
-            elif self.inside_ticks >= self.settle_ticks:
-                if self.carrying:
-                    self.finish(True, f"delivered ({detail})")
+            detail = (f"longitudinal {d_par/self.px_per_m:+.2f} m, "
+                      f"lateral {e_lat/self.px_per_m:+.2f} m, "
+                      f"heading error {math.degrees(heading_error):.1f}°")
+
+            # Check if ready to transition from 'approach' to 'corridor'
+            if self._staging_phase == 'approach':
+                app_dist_px = self.corridor_approach_dist_m * self.px_per_m
+                app_x = clamp(self.goal.x - app_dist_px * v_hat[0], self.safe_margin, self.camera_width - self.safe_margin)
+                app_y = clamp(self.goal.y - app_dist_px * v_hat[1], self.safe_margin, self.camera_height - self.safe_margin)
+                dist_to_app = math.hypot(self.cur_pos.x - app_x, self.cur_pos.y - app_y)
+
+                at_app_waypoint = (dist_to_app < 35.0 and abs(heading_error) < math.radians(18.0))
+                already_in_corridor = (0.5 * self.px_per_m <= d_par <= (self.corridor_approach_dist_m + 0.5) * self.px_per_m and
+                                       abs(e_lat) <= 0.20 * self.px_per_m and
+                                       abs(heading_error) < math.radians(15.0))
+                if at_app_waypoint or already_in_corridor:
+                    self._staging_phase = 'corridor'
+                    self.get_logger().info(
+                        f"Aerial corridor entered ({detail}). Switching to pocket centerline tracking."
+                    )
+
+            if self._staging_phase == 'approach':
+                app_dist_px = self.corridor_approach_dist_m * self.px_per_m
+                target_x = clamp(self.goal.x - app_dist_px * v_hat[0], self.safe_margin, self.camera_width - self.safe_margin)
+                target_y = clamp(self.goal.y - app_dist_px * v_hat[1], self.safe_margin, self.camera_height - self.safe_margin)
+                target_heading = self.goal_heading
+            elif self._staging_phase == 'realign':
+                realign_dist_px = 2.0 * self.px_per_m
+                target_x = clamp(self.goal.x - realign_dist_px * v_hat[0], self.safe_margin, self.camera_width - self.safe_margin)
+                target_y = clamp(self.goal.y - realign_dist_px * v_hat[1], self.safe_margin, self.camera_height - self.safe_margin)
+                target_heading = self.goal_heading
+                if d_par >= 1.7 * self.px_per_m and abs(heading_error) < math.radians(15.0):
+                    self._staging_phase = 'corridor'
+                    self.get_logger().info(f"Re-aligned along corridor ({detail}). Resuming approach.")
+            else:
+                # Corridor phase: Active Aerial Pocket Alignment Servoing
+                # Uses the overhead camera feed to servo the forklift straight down the pocket entry centerline.
+                long_ok = abs(d_par) <= self.staging_longitudinal_tol
+                lat_ok = abs(e_lat) <= self.staging_lateral_tol
+                heading_ok = abs(heading_error) <= self.staging_heading_tol
+
+                if long_ok and lat_ok and heading_ok:
+                    self.publish_stop()
+                    if self.inside_ticks == 0:
+                        self._settle_from = (self.cur_pos.x, self.cur_pos.y, self.heading())
+                    self.inside_ticks += 1
+                    sx, sy, sh = self._settle_from
+                    moving = (math.hypot(self.cur_pos.x - sx, self.cur_pos.y - sy) > self.settle_motion_px
+                              or abs(wrap(self.heading() - sh)) > math.radians(self.settle_turn_deg))
+                    if moving:
+                        self._settle_from = (self.cur_pos.x, self.cur_pos.y, self.heading())
+                        self.inside_ticks = 0
+                    elif self.inside_ticks >= self.settle_ticks:
+                        self.state = INSERT
+                        self._policy_owns_lift = True
+                        self._insert_start = now
+                        self._staging_start = (self.cur_pos.x, self.cur_pos.y)
+                        self._insert_goal = None
+                        self.last_insert_action[:] = 0.0
+                        self.publish_status("reached: staging")
+                        self.get_logger().info(
+                            f"Staging reached with aerial pocket alignment ({detail}); switching to insert policy."
+                        )
+                        return
                     return
-                if is_staging:
-                    self.state = INSERT
-                    self._policy_owns_lift = True
-                    self._insert_start = now
-                    # insert progress is measured from where the insert starts, along the forks
-                    self._staging_start = (self.cur_pos.x, self.cur_pos.y)
-                    self._insert_goal = None
-                    self.last_insert_action[:] = 0.0
-                    self.publish_status("reached: staging")
-                    self.get_logger().info(f"Staging reached ({detail}); switching to insert policy.")
+                else:
+                    self.inside_ticks = 0
+                    self._settle_from = None
+
+                # Arrived at staging standoff but misaligned: back out to re-enter corridor cleanly
+                if d_par <= 0.20 * self.px_per_m and (abs(e_lat) > self.staging_lateral_tol or abs(heading_error) > self.staging_heading_tol):
+                    self._staging_phase = 'realign'
+                    self.get_logger().warn(
+                        f"Staging pose reached with lateral/heading offset ({detail}); backing out to re-align."
+                    )
                     return
-                self.finish(True, f"staging ({detail})")
+
+                # Front roller axle position (fixed non-swiveling wheels, immune to rear tail-swing):
+                front_x = self.cur_pos.x + self.tag_offset * math.cos(self.heading())
+                front_y = self.cur_pos.y - self.tag_offset * math.sin(self.heading())
+                front_goal_x = self.goal.x + self.tag_offset * math.cos(self.goal_heading)
+                front_goal_y = self.goal.y - self.tag_offset * math.sin(self.goal_heading)
+                dfx = front_x - front_goal_x
+                dfy = front_y - front_goal_y
+                e_lat_front = dfx * n_hat[0] + dfy * n_hat[1]
+                e_lat_front_m = e_lat_front / self.px_per_m
+
+                # Active aerial line tracking down the pocket axis (Stanley tracking at front axle):
+                e_yaw_rad = heading_error
+                align_factor = clamp(1.0 - abs(e_lat_front_m) * 2.0 - abs(e_yaw_rad) * 1.0, 0.3, 1.0)
+                spd_mag = clamp(abs(d_par) * 2.5 * align_factor, self.min_speed, self.max_speed)
+                speed = -spd_mag if d_par > 0 else spd_mag * 0.5
+                v_ms = max(0.15, abs(speed) / self.max_speed * 0.67)
+                theta_intercept = math.atan2(-1.2 * e_lat_front_m, v_ms)
+                steer_cmd = clamp(math.degrees(2.0 * e_yaw_rad + theta_intercept), -self.max_steering, self.max_steering)
+
+                self.last_action = np.array([speed / self.max_speed, steer_cmd / self.max_steering])
+                self.publish_drive(speed, steer_cmd)
+                self.get_logger().info(
+                    f"[aerial-corridor] pos=({self.cur_pos.x:.0f}, {self.cur_pos.y:.0f}) heading={math.degrees(self.heading()):.0f}° "
+                    f"{detail} cmd speed={speed:.0f} steer={steer_cmd:.0f}",
+                    throttle_duration_sec=1.0
+                )
                 return
-        else:
-            self.inside_ticks = 0
-            self._settle_from = None
 
-        goal_yaw = None if self.goal_heading is None else wrap(self.goal_heading - math.pi)
+        else:
+            # Standard navigation (delivery goal or non-pallet waypoint)
+            dist_px = math.hypot(self.goal.x - self.cur_pos.x, self.goal.y - self.cur_pos.y)
+            heading_error = None if self.goal_heading is None else wrap(self.goal_heading - self.heading())
+            heading_ok = heading_error is None or abs(heading_error) <= self.heading_tolerance
+            detail = f"position error {dist_px:.1f} px"
+            if heading_error is not None:
+                detail += f", heading error {math.degrees(heading_error):.1f}°"
+
+            if dist_px < self.position_tolerance and heading_ok:
+                if self.inside_ticks == 0:
+                    self._settle_from = (self.cur_pos.x, self.cur_pos.y, self.heading())
+                self.inside_ticks += 1
+                sx, sy, sh = self._settle_from
+                moving = (math.hypot(self.cur_pos.x - sx, self.cur_pos.y - sy) > self.settle_motion_px
+                          or abs(wrap(self.heading() - sh)) > math.radians(self.settle_turn_deg))
+                if moving:
+                    self._settle_from = (self.cur_pos.x, self.cur_pos.y, self.heading())
+                    self.inside_ticks = 0
+                elif self.inside_ticks >= self.settle_ticks:
+                    if self.carrying:
+                        self.finish(True, f"delivered ({detail})")
+                        return
+                    self.finish(True, f"staging ({detail})")
+                    return
+            else:
+                self.inside_ticks = 0
+                self._settle_from = None
+
+            target_x = self.goal.x
+            target_y = self.goal.y
+            target_heading = self.goal_heading
+
+        goal_yaw = None if target_heading is None else wrap(target_heading - math.pi)
         obs = build_actor_obs(self.nav_policy.meta, self.to_meters(self.cur_pos.x, self.cur_pos.y), self.body_yaw(),
-                              self.to_meters(self.goal.x, self.goal.y), goal_yaw, self.last_action)
+                              self.to_meters(target_x, target_y), goal_yaw, self.last_action)
         action = self.nav_policy(obs)
         self.last_action = action
         speed = clamp(action[0] * self.max_speed, -self.max_speed, self.max_speed)
@@ -249,8 +390,9 @@ class RLForkliftController(ForkliftController):
         self.publish_drive(speed, steering)
         if self.auto_heading_check:
             self.check_heading_offset(speed, steering)
+        mode_str = f"nav-{self._staging_phase}" if is_staging else "nav"
         self.get_logger().info(
-            f"[nav] pos=({self.cur_pos.x:.0f}, {self.cur_pos.y:.0f}) heading={math.degrees(self.heading()):.0f}° "
+            f"[{mode_str}] pos=({self.cur_pos.x:.0f}, {self.cur_pos.y:.0f}) heading={math.degrees(self.heading()):.0f}° "
             f"{detail} cmd speed={speed:.0f} steer={steering:.0f}",
             throttle_duration_sec=1.0
         )

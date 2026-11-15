@@ -72,6 +72,26 @@ def staging_tag_pixels(pallet_xy, fork_heading_rad, px_per_m, tip_standoff=1.5, 
     return pallet_xy[0] - dist_px * ux, pallet_xy[1] - dist_px * uy
 
 
+def approach_tag_pixels(pallet_xy, fork_heading_rad, px_per_m, tip_standoff=3.5, tag_to_tip=2.518, face_offset=0.4):
+    """Tag pixel pose for the approach waypoint sitting `tip_standoff` m (default 3.5 m) in front of the pallet face."""
+    dist_px = (face_offset + tip_standoff + tag_to_tip) * px_per_m
+    ux, uy = math.cos(fork_heading_rad), -math.sin(fork_heading_rad)
+    return pallet_xy[0] - dist_px * ux, pallet_xy[1] - dist_px * uy
+
+
+def pocket_corridor_errors(pallet_xy, fork_heading_rad, forklift_xy, forklift_heading_rad, px_per_m=65.0, staging_standoff=1.5, tag_to_tip=2.518, face_offset=0.4):
+    """Compute (d_parallel_m, e_lateral_m, e_heading_deg) relative to the pocket centerline."""
+    sx, sy = staging_tag_pixels(pallet_xy, fork_heading_rad, px_per_m, staging_standoff, tag_to_tip, face_offset)
+    ux, uy = math.cos(fork_heading_rad), -math.sin(fork_heading_rad)
+    nx, ny = -math.sin(fork_heading_rad), -math.cos(fork_heading_rad)
+    dx = forklift_xy[0] - sx
+    dy = forklift_xy[1] - sy
+    d_par = -(dx * ux + dy * uy) / px_per_m
+    e_lat = (dx * nx + dy * ny) / px_per_m
+    e_yaw = math.degrees(wrap(fork_heading_rad - forklift_heading_rad))
+    return d_par, e_lat, e_yaw
+
+
 def pallet_entry_heading(pallet_theta, forklift_xy, pallet_xy):
     """Fork heading [rad, tracker convention] that enters a 1200 mm face, picking the face toward the forklift.
 
